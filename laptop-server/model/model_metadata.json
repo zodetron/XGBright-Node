@@ -1,0 +1,38 @@
+{
+  "model": "XGBoost",
+  "features": [
+    "indoor_lux",
+    "outdoor_lux",
+    "log_indoor_lux",
+    "log_outdoor_lux",
+    "lux_ratio",
+    "tod_minutes",
+    "tod_sin",
+    "tod_cos",
+    "day_of_week",
+    "is_weekend"
+  ],
+  "target": "target_brightness",
+  "target_range": [
+    0.0,
+    1.0
+  ],
+  "target_description": "Panel output fraction, 0.0-1.0.",
+  "metrics": {
+    "mae": 0.1328075119111191,
+    "rmse": 0.20609021299936722,
+    "r2": 0.6078684998587965
+  },
+  "model_size_mb": 8.5,
+  "selection_rule": "lowest test MAE, with models within 2% relative MAE decided on serialised size",
+  "incumbent_always_100pct": {
+    "mae": 0.6432114761920323,
+    "rmse": 0.7225196238016433,
+    "r2": -3.8196587416007572
+  },
+  "trained_rows": 480000,
+  "test_rows": 120000,
+  "split": "chronological, last 20% held out",
+  "sklearn_target_note": "Server must clip predictions to [0, 1].",
+  "input_note": "Build the input as a pandas DataFrame with exactly the `features` columns in that order; passing a bare array triggers a feature-name warning."
+}

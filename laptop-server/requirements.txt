@@ -1,0 +1,19 @@
+# Laptop server runtime.
+# Python 3.11 recommended: mlx-whisper and the ML wheels all have arm64 builds there.
+
+# --- web / transport ---
+fastapi
+uvicorn[standard]
+websockets
+
+# --- model loading and inference ---
+# xgboost is what the offline pipeline selected; joblib loads the exported artifact.
+joblib
+numpy
+pandas
+xgboost
+
+# --- voice ---
+mlx-whisper          # STT, Apple Silicon only
+edge-tts             # TTS (needs internet at request time)
+soundfile            # decodes edge-tts MP3 to PCM — replaces an ffmpeg dependency

@@ -1,0 +1,20 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node
+dashboard/node_modules/
+dashboard/dist/
+
+# Pipeline intermediates — regenerate with data-pipeline/combine.py + features.py
+data-pipeline/out/
+
+# Mock-device capture artifacts
+laptop-server/tools/*.wav
+
+# Raw datasets are large and are inputs, not outputs
+raw/
+
+# macOS
+.DS_Store

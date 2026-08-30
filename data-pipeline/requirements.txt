@@ -1,0 +1,8 @@
+# Offline pipeline only. Not needed to run the server.
+pandas
+numpy
+pyarrow
+scikit-learn
+lightgbm
+xgboost
+joblib

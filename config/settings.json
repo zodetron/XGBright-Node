@@ -1,0 +1,12 @@
+{
+  "magnitude_steps": {
+    "slight": 10,
+    "normal": 25,
+    "large": 45
+  },
+  "manual_timeout_seconds": 1800,
+  "panel_rated_watts": 18.0,
+  "rolling_window_seconds": 300,
+  "sensor_target_lux_default": 500,
+  "panel_full_output_lux": 500
+}

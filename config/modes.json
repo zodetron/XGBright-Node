@@ -1,0 +1,24 @@
+{
+  "modes": [
+    {
+      "id": "office",
+      "name": "Office",
+      "target_lux": 500
+    },
+    {
+      "id": "reading",
+      "name": "Reading",
+      "target_lux": 400
+    },
+    {
+      "id": "relax",
+      "name": "Relax",
+      "target_lux": 150
+    },
+    {
+      "id": "dark",
+      "name": "Dark",
+      "target_lux": 20
+    }
+  ]
+}
