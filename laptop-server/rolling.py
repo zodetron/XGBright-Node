@@ -4,6 +4,7 @@ In-memory rolling window of live telemetry, plus the linear power model.
 Nothing here is persisted (architectural decision #8). The window holds only the last
 `rolling_window_seconds` of samples; anything older is discarded on insert. Restarting
 the server starts the graph over, which is the intended behaviour.
+The long-term record of real device sessions is `history.py`, not this.
 
 Power model (architectural decision #9): the panel at X% brightness draws X% of its
 rated wattage. Crude, but it is the model the project specifies and it is close enough

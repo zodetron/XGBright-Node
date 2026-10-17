@@ -8,7 +8,8 @@ running process and the file never disagree.
 
 Two files, both under `config/`:
   modes.json     — the user's list of lighting modes {id, name, target_lux}
-  settings.json  — magnitude step sizes, MANUAL timeout, panel wattage, window size
+  settings.json  — magnitude step sizes, MANUAL timeout, panel wattage, window size,
+                   history bucket length
 
 Built-in modes like "office" and "dark" are ordinary entries in modes.json, not special
 cases in code (architectural decision #6) — they can be renamed, retargeted or deleted
@@ -41,6 +42,7 @@ DEFAULT_SETTINGS = {
     "rolling_window_seconds": 300,
     "sensor_target_lux_default": 500,
     "panel_full_output_lux": 500,
+    "history_interval_seconds": 5,
 }
 
 _SLUG = re.compile(r"[^a-z0-9]+")

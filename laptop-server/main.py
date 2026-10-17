@@ -14,6 +14,8 @@ Run:  python main.py            (or: uvicorn main:app --host 0.0.0.0 --port 8000
 import asyncio
 import base64
 import contextlib
+import csv
+import io
 import json
 import time
 from pathlib import Path
@@ -21,11 +23,12 @@ from pathlib import Path
 from fastapi import (Body, FastAPI, HTTPException, Request, WebSocket,
                      WebSocketDisconnect)
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 import protocol
 from config_store import ConfigStore
 from controller import Controller
+from history import HistoryStore, is_simulated
 from predictor import BrightnessPredictor
 from rolling import RollingWindow
 from state import ModeState
@@ -37,7 +40,8 @@ config = ConfigStore()
 mode_state = ModeState(config)
 window = RollingWindow(config)
 predictor = BrightnessPredictor()
-controller = Controller(config, mode_state, window, predictor)
+history = HistoryStore(config)
+controller = Controller(config, mode_state, window, predictor, history)
 
 app = FastAPI(title="Adaptive Lighting Server")
 
@@ -59,6 +63,7 @@ class DeviceSession:
     def __init__(self, socket):
         self.socket = socket
         self.device_id = "unknown"
+        self.recording = False        # whether this session owns the open history row
         self._send_lock = asyncio.Lock()
         self._pending_acks = {}
 
@@ -117,6 +122,12 @@ class DeviceSession:
             self.device_id = message.get("device_id", "esp32")
             print(f"[device] hello from {self.device_id} "
                   f"(fw {message.get('fw', '?')})")
+            # History starts at the hello, and only for real hardware.
+            if is_simulated(self.device_id, message):
+                print("[history] simulated device — not recording")
+            else:
+                await history.start_session(self.device_id, message.get("fw"))
+                self.recording = True
 
         elif kind == protocol.SENSOR:
             await controller.on_sensor(
@@ -186,6 +197,12 @@ async def device_socket(socket: WebSocket):
         except Exception:
             pass
 
+    if previous is not None and previous.recording:
+        # The old socket's own cleanup runs later; close its history row now so
+        # the new device's readings are never credited to the old session.
+        previous.recording = False
+        history.end_session("replaced")
+
     session = DeviceSession(socket)
     controller.device = session
     print("[device] connected")
@@ -207,6 +224,10 @@ async def device_socket(socket: WebSocket):
     finally:
         if controller.device is session:
             controller.device = None
+        if session.recording:
+            session.recording = False
+            history.end_session(
+                "disconnect" if controller.device is None else "replaced")
         print("[device] disconnected")
         await controller.broadcast_state()
 
@@ -390,6 +411,7 @@ async def simulate_sensor(payload: dict = Body(...)):
     brightness = await controller.on_sensor(
         float(payload.get("indoor_lux", 0.0)),
         float(payload.get("outdoor_lux", 0.0)),
+        simulated=True,
     )
     return {"brightness": brightness, "state": controller.status()}
 
@@ -398,12 +420,54 @@ async def simulate_sensor(payload: dict = Body(...)):
 async def simulate_voice(payload: dict = Body(...)):
     """Run a transcript through NLU + state + TTS without speaking into a mic."""
     transcript = payload.get("transcript", "")
-    return await controller.handle_transcript(transcript)
+    return await controller.handle_transcript(transcript, typed=True)
 
 
 @app.get("/api/health")
 def health():
     return {"ok": True, "device_connected": controller.device is not None}
+
+
+# --- HISTORY ------------------------------------------------------------------
+# Everything below reads the SQLite log. Times are unix seconds; omitting `start`
+# or `end` means "from the beginning" / "until now".
+
+@app.get("/api/history/summary")
+def history_summary(start: float | None = None, end: float | None = None):
+    return history.summary(start, end)
+
+
+@app.get("/api/history/samples")
+def history_samples(start: float | None = None, end: float | None = None,
+                    max_points: int = 1500):
+    return history.samples(start, end, max_points)
+
+
+@app.get("/api/history/changes")
+def history_changes(start: float | None = None, end: float | None = None,
+                    limit: int = 500):
+    return {"changes": history.changes(start, end, limit)}
+
+
+@app.get("/api/history/sessions")
+def history_sessions(start: float | None = None, end: float | None = None,
+                     limit: int = 200):
+    return {"sessions": history.sessions(start, end, limit)}
+
+
+@app.get("/api/history/export/{table}.csv")
+def history_export(table: str, start: float | None = None, end: float | None = None):
+    """The raw rows as CSV, for analysis outside the dashboard."""
+    if table not in ("samples", "light_changes"):
+        raise HTTPException(404, "export 'samples' or 'light_changes'")
+    header, rows = history.export_rows(table, start, end)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(header)
+    writer.writerows(rows)
+    return StreamingResponse(
+        iter([buffer.getvalue()]), media_type="text/csv",
+        headers={"content-disposition": f'attachment; filename="{table}.csv"'})
 
 
 # --- LIFECYCLE ----------------------------------------------------------------
@@ -416,6 +480,12 @@ async def on_startup():
     # server is fully usable while this runs.
     asyncio.create_task(stt.warmup())
     print("[server] ready on http://0.0.0.0:8000")
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    history.end_session("server_stopped")
+    history.close()
 
 
 if __name__ == "__main__":

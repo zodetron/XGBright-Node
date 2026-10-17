@@ -143,7 +143,9 @@ async def main():
         if args.say:
             state["clip"] = await synthesise_command(args.say)
         await socket.send(json.dumps({"type": protocol.HELLO,
-                                      "device_id": "mock-esp32", "fw": "test"}))
+                                      "device_id": "mock-esp32", "fw": "test",
+                                      # Keeps this session out of the history DB.
+                                      "simulated": True}))
         receiver = asyncio.create_task(receive_loop(socket, state))
 
         # Let a few readings land so the rolling window and energy totals are real

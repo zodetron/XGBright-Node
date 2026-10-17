@@ -9,7 +9,7 @@ whole thing in RAM to build one giant string. Binary frames stream in fixed-size
 the device can fill from a small buffer.
 
 --- ESP32 -> laptop ----------------------------------------------------------
-  {"type": "hello",  "device_id": str, "fw": str}
+  {"type": "hello",  "device_id": str, "fw": str}   # + "simulated": true from the mock
   {"type": "sensor", "indoor_lux": float, "outdoor_lux": float}
   {"type": "sensor_unavailable", "reason": str}   # no trustworthy reading exists
   {"type": "ack",    "command_id": str, "brightness": float}   # command APPLIED

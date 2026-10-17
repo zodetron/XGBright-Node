@@ -16,11 +16,12 @@ from voice import nlu, tts
 
 
 class Controller:
-    def __init__(self, config, mode_state, window, predictor):
+    def __init__(self, config, mode_state, window, predictor, history):
         self.config = config
         self.state = mode_state
         self.window = window
         self.predictor = predictor
+        self.history = history        # SQLite log; records only real-device sessions
 
         self.device = None            # the connected DeviceSession, if any
         self.last_indoor_lux = 0.0
@@ -59,11 +60,16 @@ class Controller:
         """
         self.sensor_error = reason
         self.last_sensor_at = None
+        self.history.on_unavailable(reason)
         print(f"[controller] sensor unavailable: {reason}")
         await self.broadcast_state()
 
-    async def on_sensor(self, indoor_lux, outdoor_lux):
-        """Handle one reading: predict, resolve against the mode state, command."""
+    async def on_sensor(self, indoor_lux, outdoor_lux, simulated=False):
+        """Handle one reading: predict, resolve against the mode state, command.
+
+        A `simulated` reading drives the system exactly like a real one but is kept
+        out of the persistent history, along with the command it produces.
+        """
         self.sensor_error = None
         self.last_indoor_lux = float(indoor_lux)
         self.last_outdoor_lux = float(outdoor_lux)
@@ -81,18 +87,31 @@ class Controller:
         self.window.add(indoor_lux, outdoor_lux, brightness,
                         snapshot["mode"], snapshot["active_mode_name"])
 
-        await self.send_brightness(brightness)
+        if not simulated:
+            self.history.on_reading(indoor_lux, outdoor_lux, brightness,
+                                    snapshot["mode"], snapshot["active_mode_name"])
+        await self.send_brightness(
+            brightness, cause=None if simulated
+            else ("auto" if snapshot["mode"] == AUTO else "hold"))
         await self.broadcast_state(predicted=predicted)
         return brightness
 
-    async def send_brightness(self, brightness, await_ack=False):
+    async def send_brightness(self, brightness, await_ack=False, cause=None,
+                              transcript=None):
         """Push a brightness command to the device.
 
         With `await_ack`, waits for the device to confirm it actually applied the
-        change — the gate the spoken confirmation sits behind.
+        change — the gate the spoken confirmation sits behind. `cause` names who
+        asked for it (auto / hold / voice / voice_typed / dashboard) and is what the
+        history's change log records; None keeps the command out of the log.
         """
         if self.device is None:
             return None
+        if cause is not None:
+            snapshot = self.state.snapshot()
+            self.history.on_command(brightness, cause, snapshot["last_reason"],
+                                    snapshot["mode"], snapshot["active_mode_name"],
+                                    transcript)
         command_id = uuid.uuid4().hex[:12]
         await self.device.send_json({
             "type": protocol.BRIGHTNESS,
@@ -135,7 +154,7 @@ class Controller:
 
     # --- voice --------------------------------------------------------------
 
-    async def handle_transcript(self, transcript, return_audio=False):
+    async def handle_transcript(self, transcript, return_audio=False, typed=False):
         """Parse a transcript, apply it, and speak the result.
 
         Returns a dict describing what happened, which the dashboard also receives.
@@ -155,7 +174,9 @@ class Controller:
         applied = True
         if action != "unknown" and self.device is not None:
             ack = await self.send_brightness(self.state.snapshot()["target_brightness"],
-                                             await_ack=True)
+                                             await_ack=True,
+                                             cause="voice_typed" if typed else "voice",
+                                             transcript=transcript)
             applied = ack is not None
             if not applied:
                 print("[controller] device did not acknowledge within "
@@ -254,7 +275,7 @@ class Controller:
         else:
             raise ValueError("no override specified")
 
-        await self.send_brightness(snapshot["target_brightness"])
+        await self.send_brightness(snapshot["target_brightness"], cause="dashboard")
         await self.broadcast_state()
         return snapshot
 
