@@ -15,7 +15,8 @@ confirmation stating both what changed and what it saved.
 | `laptop-server/` | The single Python process — WebSocket, ML, STT, NLU, TTS, API |
 | `dashboard/` | React console |
 | `esp32-firmware/` | Single-file Arduino sketch |
-| `config/` | The only persisted state: modes, settings |
+| `config/` | Persisted settings: modes, settings |
+| `laptop-server/data/` | SQLite history of real-device sessions (gitignored) |
 | `PROGRESS.md` | Task status, deviations, and known limitations |
 | `TESTING.md` | End-to-end manual test plan |
 
@@ -72,8 +73,11 @@ acknowledge that it actually applied the change, so the user is never told the l
 moved before it did. If `edge-tts` stalls or fails, a pre-recorded clip plays instead —
 never silence.
 
-**Nothing is persisted but config.** Live readings, chart history and energy totals are
-an in-memory rolling window. There is no database anywhere in this project.
+**Real sessions are logged; nothing else is.** While a real ESP32 is connected, readings
+are averaged into 5-second rows in a local SQLite file (`laptop-server/data/history.db`),
+along with every light change and who caused it. The dashboard's History tab shows it.
+Mock devices and simulated readings are never stored. The live chart is still an
+in-memory rolling window.
 
 ## Documentation
 

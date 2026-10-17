@@ -239,8 +239,9 @@ Random Forest won on raw MAE but serialises to 181.7 MB against XGBoost's 8.5 MB
   room with a large opening may be outside that range.
 - `edge-tts` needs internet. The pre-recorded fallback covers failure.
 - No auth on the API or either WebSocket. Fine on a trusted LAN.
-- Nothing persisted except the three config JSONs — telemetry and energy totals are
-  in-memory and reset on restart. This is architectural decision #8, not an oversight.
+- The live chart and session energy totals are in-memory and reset on restart. Real
+  device sessions are logged to `laptop-server/data/history.db` (added 2026-10-17, see
+  `CONTEXT.md` §24.1) and shown in the dashboard's History tab.
 
 ---
 
@@ -256,7 +257,10 @@ Random Forest won on raw MAE but serialises to 181.7 MB against XGBoost's 8.5 MB
 | `laptop-server/voice/nlu.py` | Rule-based parser, four languages, no LLM |
 | `laptop-server/tools/mock_device.py` | Fake ESP32 speaking the real protocol |
 | `dashboard/src/components/VoicePanel.tsx` | Push-to-talk + intent display |
-| `config/*.json` | The only persisted state |
+| `config/*.json` | Persisted modes and settings |
+| `laptop-server/history.py` | SQLite history: 5 s buckets, light changes, sessions |
+| `laptop-server/data/history.db` | The history itself — gitignored, kept forever |
+| `dashboard/src/components/HistoryView.tsx` | The History tab |
 | `docs/HARDWARE.md` | Authoritative for pins and quirks |
 | `PROGRESS.md` | Task checklist, deviations, limitations |
 | `TESTING.md` | 15 end-to-end checks |

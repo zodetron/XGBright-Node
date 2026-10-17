@@ -823,6 +823,7 @@ One Python process. `./.venv/bin/python laptop-server/main.py`, FastAPI + uvicor
 | `state.py` | The AUTO/MANUAL machine and the revert timer |
 | `predictor.py` | Loads the model, builds the feature vector, predicts |
 | `rolling.py` | 300 s telemetry window + the energy/savings model |
+| `history.py` | SQLite log of real-device sessions — 5 s buckets + light changes (§24.1) |
 | `config_store.py` | Loads and live-updates the three config JSONs |
 | `protocol.py` | The wire schema |
 | `voice/stt.py` | MLX Whisper |
@@ -950,7 +951,7 @@ of energy into the total. **Consequence:** long outages under-report actual *and
 hypothetical usage equally, so the savings **percentage** stays correct.
 
 Nothing here is persisted. Restarting the server starts the graph over — intended
-behaviour, architectural decision #8.
+behaviour. The long-term record is the separate SQLite history (§24.1).
 
 ## 23. The API surface
 
@@ -980,6 +981,13 @@ far behind resyncs from the next full state message.
 | POST | `/api/voice/audio` | upload audio (laptop-mic fallback path) |
 | POST | `/api/simulate/sensor` | ⚠️ **opt-in simulation** |
 | POST | `/api/simulate/voice` | ⚠️ **opt-in simulation** |
+| GET | `/api/history/summary` | energy, savings, change counts, connected time for a range |
+| GET | `/api/history/samples` | stored 5 s buckets; downsampled server-side past `max_points` |
+| GET | `/api/history/changes` | the light-change log, newest first |
+| GET | `/api/history/sessions` | device connect/disconnect sessions |
+| GET | `/api/history/export/{samples,light_changes}.csv` | raw rows as CSV |
+
+Every history endpoint takes optional `start` / `end` in unix seconds.
 
 CORS is enabled because the dashboard runs on a different port in development.
 
@@ -993,7 +1001,7 @@ CORS is enabled because the dashboard runs on a different port in development.
 
 A board with no light sensors fitted is *connected* but has nothing to report. See §26.
 
-## 24. Config — the only persisted state
+## 24. Persisted state — config and history
 
 **`config/settings.json`**
 
@@ -1004,7 +1012,8 @@ A board with no light sensors fitted is *connected* but has nothing to report. S
   "panel_rated_watts": 18.0,
   "rolling_window_seconds": 300,
   "sensor_target_lux_default": 500,
-  "panel_full_output_lux": 500
+  "panel_full_output_lux": 500,
+  "history_interval_seconds": 5
 }
 ```
 
@@ -1019,6 +1028,42 @@ A board with no light sensors fitted is *connected* but has nothing to report. S
 
 Both are **live-updatable** — a mode added from the dashboard is matchable by voice
 immediately, with no restart, because `nlu.parse()` is handed the live list.
+
+### 24.1 History — `laptop-server/data/history.db`
+
+Added 2026-10-17. A SQLite file, kept forever, gitignored. Three tables:
+
+| Table | One row per | Holds |
+|---|---|---|
+| `sessions` | device connection | device_id, firmware, connected_at, disconnected_at, end_reason |
+| `samples` | `history_interval_seconds` bucket (5 s) | readings count, avg/min/max indoor + outdoor lux, avg + last brightness, mode, actual Wh, Wh at 100%, sensor_error |
+| `light_changes` | brightness command that changed the light | from → to, source (`auto` / `hold` / `voice` / `voice_typed` / `dashboard`), reason, mode, voice transcript |
+
+**When it records.** A session opens on the device's `hello` and closes on disconnect
+(`end_reason` = `disconnect`, `replaced`, `server_stopped`). A server that died without
+shutting down has its open session closed on next start at the last recorded moment,
+marked `unclean_shutdown` — never at the restart time.
+
+**What it never records — the data-integrity rule (§29) applied to disk:**
+- anything outside a session — no device, no rows, so a gap in the data is a real gap
+- the mock device: its `hello` carries `"simulated": true` (any `mock*` device_id is also
+  treated as simulated)
+- `/api/simulate/sensor` injections, even while a real board is connected — along with
+  the brightness command they produce
+- a value for a failed sensor: a bucket with only `sensor_unavailable` stores NULL lux
+  and the reason
+
+**Buckets average, they do not sample.** All ~5 readings in a bucket are averaged, with
+min/max kept, so a short spike survives. Energy is integrated per reading with the same
+`dt <= 10 s` guard as `rolling.py`.
+
+**Change log threshold.** AUTO moves under 2% are model jitter and skipped. Voice, typed
+(`/api/simulate/voice` — real commands to the real panel) and dashboard changes are
+always logged.
+
+**Performance.** Writes go through a one-thread executor: the control loop never waits on
+disk and rows land in order. WAL mode lets the dashboard read during a write. ~17k rows
+a day at 5 s, roughly 2 MB/day.
 
 ---
 
@@ -1194,6 +1239,7 @@ taken by the BolBiz project).
 |---|---|
 | `StatusPanel.tsx` | mode, indoor/outdoor lux, panel %, connection state |
 | `EnergyChart.tsx` | live 1 s chart: actual watts vs hypothetical 100% |
+| `HistoryView.tsx` | **History tab** — stored range: energy/savings tiles, panel output + lux charts with real gaps, change log, sessions, CSV export |
 | `Controls.tsx` | manual override — auto / mode / brightness slider / **Test panel** |
 | `ModesManager.tsx` | add / edit / delete modes |
 | `SettingsPanel.tsx` | magnitude steps, MANUAL timeout, rated wattage |
@@ -1243,7 +1289,7 @@ The numbering comes from the original build spec. These are the ones cited in th
 | **#3** | **One persistent WebSocket** carries everything; the ESP32 is the client |
 | **#5** | The **AUTO/MANUAL state machine** with a reset-on-command revert timer |
 | **#7** | **Rule-based NLU, no LLM**, with configurable magnitude steps |
-| **#8** | **No persistence** beyond the three config JSONs |
+| **#8** | **No persistence** beyond the config JSONs — *amended 2026-10-17:* real-device history is logged to SQLite (§24.1); the live window is still memory-only |
 | **#9** | **Linear power model** — X% brightness draws X% of rated wattage |
 | **#13** | The spoken confirmation is **gated on the device's applied-ack** |
 
@@ -1293,7 +1339,8 @@ Kept because most are non-obvious and would otherwise be rediscovered.
 - Language detection is **heuristic**.
 
 ### System
-- **No persistence** — telemetry, chart history and energy totals reset on restart (#8).
+- **The live window resets on restart** — the live chart and session energy totals are
+  in memory. The long-term record is the SQLite history (§24.1).
 - **The energy model is linear.** Real LED drivers are not, especially at the bottom.
 - **One device at a time.**
 - **No authentication** on the API or either WebSocket. Fine on a trusted LAN, not fine
