@@ -42,6 +42,7 @@
 #include <Wire.h>
 #include <BH1750.h>
 #include <WebSocketsClient.h>
+#include <ESPmDNS.h>
 #include <ArduinoJson.h>
 #include <driver/i2s_std.h>
 #include <freertos/FreeRTOS.h>
@@ -63,19 +64,38 @@
  * appear in a WiFi list — read its IP off the serial monitor.
  * The ESP32 cannot see 5 GHz SSIDs at all.
  *
- * FILL THESE IN BEFORE FLASHING. They are placeholders in the repo so that no
- * real network credentials are ever committed. */
-#define WIFI_SSID               "YOUR_WIFI_SSID"       // 2.4 GHz only
-#define WIFI_PASSWORD           "YOUR_WIFI_PASSWORD"
+ * CREDENTIALS LIVE IN `secrets.h`, WHICH IS GITIGNORED AND NOT IN THE REPO.
+ *   cp secrets.example.h secrets.h    then fill it in.
+ * If secrets.h is absent the placeholders below are used and the sketch still
+ * builds — it just will not join anything until you supply real values. */
+#if __has_include("secrets.h")
+  #include "secrets.h"
+#endif
+
+#ifndef WIFI_SSID
+  #define WIFI_SSID             "test-hotspot"         // 2.4 GHz only
+#endif
+#ifndef WIFI_PASSWORD
+  #define WIFI_PASSWORD         "abcdef123"
+#endif
+
 #define WIFI_HOSTNAME           "esp32-adaptive-light"
 #define WIFI_RETRY_INTERVAL_MS  5000UL
 
-/* The laptop's LAN address. This is DHCP-assigned and WILL change when the
- * laptop moves network — check it with `ipconfig getifaddr en0` and re-flash.
- * The ESP32 must be on the SAME subnet: if this reads 192.168.1.x and the
- * board's own IP comes up 192.168.0.x, they cannot see each other.
- * The value below is a PLACEHOLDER — replace it with your own laptop IP. */
-#define SERVER_HOST             "192.168.1.100"  // the laptop running main.py
+/* The laptop's LAN address, also set in secrets.h. DHCP-assigned and WILL
+ * change when the laptop moves network — check `ipconfig getifaddr en0` and
+ * re-flash. The ESP32 must be on the SAME subnet: if this reads 192.168.1.x
+ * and the board's own IP comes up 192.168.0.x, they cannot see each other. */
+/* PREFERRED: resolve the laptop by mDNS name, so a changed DHCP lease — a new
+ * phone, a restarted hotspot, a different network — needs no reflash. macOS
+ * advertises this automatically; check yours with `scutil --get LocalHostName`.
+ * Set to "" to disable mDNS and use the fixed IP below instead. */
+#define SERVER_MDNS_NAME        "Hardiks-MacBook-Air.local"
+
+/* FALLBACK, used only if mDNS resolution fails. */
+#ifndef SERVER_HOST
+  #define SERVER_HOST           "10.19.188.216"  // the laptop running main.py
+#endif
 #define SERVER_PORT             8000
 #define SERVER_PATH             "/ws/device"
 
@@ -788,6 +808,8 @@ static uint32_t g_lastTelemetry = 0;
 static bool     g_receivingAudio = false;
 static volatile bool g_sweepRequested = false;
 static float    g_currentBrightness = 0.0f;   // held through a WiFi outage
+static bool     g_mdnsUp        = false;
+static String   g_serverAddr;                 // resolved each time WiFi comes up
 
 static void sendJson(JsonDocument& doc) {
   String out;
@@ -994,6 +1016,35 @@ static void wifiBegin() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 }
 
+/* Resolve the server address once WiFi is up. Returns a dotted-quad string.
+ * mDNS is tried first; on any failure we fall back to the compiled-in IP, so
+ * this is never worse than the fixed-address behaviour it replaces. */
+static String resolveServerAddr() {
+  const char* mdnsName = SERVER_MDNS_NAME;
+  if (mdnsName[0] == '\0') return String(SERVER_HOST);
+
+  if (!g_mdnsUp) {
+    g_mdnsUp = MDNS.begin(WIFI_HOSTNAME);
+    if (!g_mdnsUp) {
+      Serial.println("[mdns] responder failed to start — using fixed IP");
+      return String(SERVER_HOST);
+    }
+  }
+
+  /* queryHost() wants the bare label, not the ".local" suffix. */
+  String label(mdnsName);
+  if (label.endsWith(".local")) label.remove(label.length() - 6);
+
+  IPAddress ip = MDNS.queryHost(label.c_str(), 2000);
+  if (ip != IPAddress((uint32_t)0)) {
+    Serial.printf("[mdns] %s -> %s\n", mdnsName, ip.toString().c_str());
+    return ip.toString();
+  }
+  Serial.printf("[mdns] could not resolve %s — falling back to %s\n",
+                mdnsName, SERVER_HOST);
+  return String(SERVER_HOST);
+}
+
 static void netUpdate() {
   g_ws.loop();
 
@@ -1018,7 +1069,15 @@ static void netUpdate() {
     g_wifiAttempts = 0;
     Serial.printf("[wifi] connected — IP %s, RSSI %d dBm\n",
                   WiFi.localIP().toString().c_str(), (int)WiFi.RSSI());
-    Serial.printf("[ws] target ws://%s:%d%s\n", SERVER_HOST, SERVER_PORT, SERVER_PATH);
+
+    /* Resolve now rather than at boot: the address is only knowable once we are
+     * actually on the network, and re-resolving on every reconnect means a lease
+     * that moved while we were offline is picked up without a reflash. */
+    g_serverAddr = resolveServerAddr();
+    Serial.printf("[ws] target ws://%s:%d%s\n",
+                  g_serverAddr.c_str(), SERVER_PORT, SERVER_PATH);
+    g_ws.disconnect();
+    g_ws.begin(g_serverAddr.c_str(), SERVER_PORT, SERVER_PATH);
   }
 
   if (g_socketUp && millis() - g_lastTelemetry >= TELEMETRY_INTERVAL_MS) {
@@ -1104,7 +1163,8 @@ void setup() {
   WiFi.mode(WIFI_STA);
   wifiScanAndReport();
   wifiBegin();
-  g_ws.begin(SERVER_HOST, SERVER_PORT, SERVER_PATH);
+  /* No g_ws.begin() here — the target address is not known until WiFi is up
+   * and mDNS has resolved. netUpdate() starts the socket at that point. */
   g_ws.onEvent(onWsEvent);
   g_ws.setReconnectInterval(3000);
   g_ws.enableHeartbeat(15000, 3000, 2);   // detects half-open TCP connections

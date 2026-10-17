@@ -10,6 +10,9 @@ dashboard/dist/
 # Pipeline intermediates — regenerate with data-pipeline/combine.py + features.py
 data-pipeline/out/
 
+# Local history database — grows forever, stays on this machine
+laptop-server/data/
+
 # Mock-device capture artifacts
 laptop-server/tools/*.wav
 
@@ -18,3 +21,6 @@ raw/
 
 # macOS
 .DS_Store
+
+# Local WiFi credentials — never commit
+esp32-firmware/secrets.h
