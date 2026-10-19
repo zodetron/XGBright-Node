@@ -32,9 +32,9 @@ Everything except the hardware sections can be exercised with the mock device:
 
 **Do:** Start the server, then the mock device (or the real ESP32).
 
-**Expect:** `[device] hello from …` in the server log. The dashboard's ESP32 dot turns
-green. Indoor/outdoor lux tiles update once per second. The mock prints `panel -> NN%`
-for every reading.
+**Expect:** `[device] hello from …` in the server log. The top bar shows **ESP32
+connected** (or a red **SIMULATED DEVICE** badge for the mock). The gauge and readouts
+update once per second. The mock prints `panel -> NN%` for every reading.
 
 **Proves:** The WebSocket carries telemetry in and brightness commands out, and the
 device acknowledges each command.
@@ -65,8 +65,8 @@ and AUTO responds to both light level and time of day.
 
 **Do:** Type `office mode` into the dashboard's Voice box, or say it into the mic.
 
-**Expect:** The mode tile flips to `MANUAL` in violet, showing `Office` and a countdown.
-The Voice card shows a `MODE` badge, the language, the transcript, and a spoken
+**Expect:** The hero's mode chip flips to `MANUAL` in violet, the headline reads
+*Holding Office*, and a countdown appears. The Voice card shows a `MODE` badge, the language, the transcript, and a spoken
 confirmation naming the mode, the resulting percentage, and the savings figure.
 
 **Proves:** Mode matching against the live config, the MANUAL transition, and the
@@ -100,11 +100,11 @@ and per-language voice selection.
 
 ## 6. Manual timeout and reset
 
-**Do:** Set the manual timeout to 60 seconds in Advanced Settings. Send any command.
+**Do:** Set the manual timeout to 60 seconds in **Setup**. Send any command.
 Wait 40 seconds, send another. Wait 70 seconds without sending anything.
 
 **Expect:** The countdown restarts at 60 on the second command — it is not cumulative.
-After the final 70-second wait the mode tile returns to `AUTO` on its own.
+After the final 70-second wait the mode chip returns to `AUTO` on its own.
 
 **Proves:** The timer resets on *any* command and the lazy expiry fires.
 
@@ -189,8 +189,8 @@ points fall off the left edge once the window fills.
 
 ## 13. Dashboard CRUD
 
-**Do:** Add a mode ("Movie Night", 60 lux). Confirm it appears in both the mode chips
-and the list. Send `switch to movie night` by voice. Edit its target, then delete it.
+**Do:** In **Setup**, add a mode ("Movie Night", 60 lux). Confirm it appears in the
+Setup list and as a tile on the Live tab. Send `switch to movie night` by voice. Edit its target, then delete it.
 
 **Expect:** The new mode is voice-matchable immediately with no server restart. Editing
 and deleting take effect at once, and `config/modes.json` on disk reflects each change.
@@ -203,7 +203,7 @@ cases in code.
 
 ## 14. Settings persistence
 
-**Do:** Change "A little" to 5% and save. Send `a little brighter`. Restart the server
+**Do:** In **Setup**, change "A little" to 5% and save. Send `a little brighter`. Restart the server
 and check the value survived.
 
 **Expect:** The step applied is 5%. `config/settings.json` holds the new value after
@@ -222,3 +222,33 @@ did not understand" in the detected language.
 
 **Proves:** The parser declines rather than guessing — an unparsed command must never
 move the lights.
+
+---
+
+## 16. History recording
+
+**Do:** Connect the real ESP32 for a minute, change brightness once from the dashboard
+and once by voice, then disconnect it.
+
+**Expect:** The server logs `[history] recording session N` on hello and
+`[history] closed session N (disconnect)` at the end. The **History** tab shows the
+session, a 5-second-resolution chart with a gap after disconnect, and both changes with
+their source (and the transcript for the voice one). `Export samples CSV` downloads the
+rows.
+
+**Proves:** Sessions open on hello and close on disconnect, buckets are written, and
+changes record who caused them.
+
+---
+
+## 17. Simulated data is never stored or disguised
+
+**Do:** With no real device attached, run the mock device for 30 seconds and also
+`POST /api/simulate/sensor`. Then stop the mock.
+
+**Expect:** The top bar shows **SIMULATED DEVICE** and a red banner while it runs; the
+server logs `[history] simulated device — not recording`. The History tab gains nothing.
+The moment the mock disconnects, every reading on the Live tab returns to `—`.
+
+**Proves:** Fake data is labelled while shown, never persisted, and never left on
+screen after its source is gone.

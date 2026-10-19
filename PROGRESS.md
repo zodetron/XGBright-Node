@@ -1,10 +1,30 @@
-# CONTEXT — Smart Adaptive Lighting System with a Vernacular Voice Agent
+# PROGRESS — XGBright: how it was built, and how every part works
 
-**Full technical context for group members.** Everything from the raw CSV files to the
-GPIO pins, in the order the data actually flows. Written 2026-08-30.
+**The complete handover document.** Read this and you should be able to explain, run,
+debug and extend the project without asking anyone. It goes from the raw dataset to the
+GPIO pins, then through the transport, server, voice pipeline, database and dashboard,
+with every port, endpoint and message on the way. Last updated 2026-10-19.
 
-If you read nothing else, read **§1 (what it is)**, **§2 (the map)** and **§16 (status)**.
-Everything between those is the detail behind them.
+**How to read it**
+- New to the project: §1 (what it is) → §2 (the map) → **Part 0 (how it was built)** →
+  §33 (status).
+- Integrating with it: **§0.4 (ports)**, §16 (WebSocket), **§23 (API reference)**.
+- Debugging: §31 (bugs we hit) and §36 (troubleshooting).
+
+**Contents**
+
+| Part | Covers |
+|---|---|
+| 0 | How it was built, phase by phase; ports and addresses at a glance |
+| I | Machine learning — raw data, cleaning, features, training, model choice (§3–6) |
+| II | Hardware — parts, pins, the three board-breaking gotchas, audio and radio facts (§7–11) |
+| III | Firmware — structure, boot, the main loop (§12–15) |
+| IV | Transport — the WebSocket, wire schema, the life of one reading (§16) |
+| V | Laptop server — control loop, model, state machine, energy, **API reference**, config, history DB (§17–24) |
+| VI | Voice — the journey of a spoken command, STT, NLU, TTS (§25–28) |
+| VII | Dashboard — tabs, components, the live message stream |
+| VIII | Principles — data integrity, decisions, bugs, limitations (§29–32) |
+| IX | Operations — status, running, checklist, troubleshooting (§33–36) |
 
 ---
 
@@ -12,18 +32,12 @@ Everything between those is the detail behind them.
 
 | File | What it is | Trust it for |
 |---|---|---|
-| **`CONTEXT.md`** (this file) | Full technical explanation, end to end | Understanding how anything works |
-| `HANDOFF.md` | Session handoff: current state, what's left | What to do next |
+| `README.md` | Overview and quick start | Getting it running |
+| **`PROGRESS.md`** (this file) | How it was built and how it works, end to end | Everything else |
 | `docs/HARDWARE.md` | Measured pin map and hardware quirks | **Authoritative for pins.** Beats the firmware source if they disagree |
 | `laptop-server/protocol.py` | The wire schema | **Authoritative for messages.** Read before touching any message |
 | `data-pipeline/README.md` | Model selection writeup | The ML numbers |
-| `PROGRESS.md` | Original task checklist + deviations | The deviation list and the "why we chose X" record |
-| `TESTING.md` | 15 end-to-end manual checks | Verifying a build |
-
-⚠️ **`PROGRESS.md`'s "Firmware" limitations section is stale.** It still says recording
-blocks `loop()` and that peripherals are unverified. Both were fixed afterwards — audio
-now runs on core-0 tasks and every peripheral has been exercised on the real board.
-`HANDOFF.md` supersedes it.
+| `TESTING.md` | End-to-end manual checks | Verifying a build |
 
 ---
 
@@ -93,7 +107,9 @@ speaker**, including the live energy-savings figure.
  └────────────────────────────────┬─────────────────────────────────────────────┘
                                   │
                     React + Vite dashboard on :5180
-        live chart · status · manual override · modes CRUD · settings · push-to-talk
+          Live (gauge, controls, chart, voice, today) · History · Setup
+                                  │
+             SQLite  laptop-server/data/history.db  (real-device sessions only)
 ```
 
 **Offline, run once, not part of the live system:**
@@ -105,6 +121,78 @@ speaker**, including the live energy-savings figure.
                                                             │
                                     laptop-server/model/brightness_model.joblib
 ```
+
+---
+
+# PART 0 — HOW IT WAS BUILT
+
+The order below is the order the work was done, and the order to read the code in if you
+are rebuilding it. Each phase names what was produced and the files it lives in.
+
+## 0.1 The build, phase by phase
+
+| # | Phase | What was done | Output |
+|---|---|---|---|
+| 1 | **Get the data** | Singapore office-tower submetering (2018–19, per floor, per zone, minute resolution) unpacked into `raw/`. Duplicates and sensor-less floors identified. | `raw/*.zip` |
+| 2 | **Combine** | All floor-year files merged into one long table; duplicate archives skipped by filename. | `data-pipeline/combine.py` → `out/unified.parquet` |
+| 3 | **Clean** | Rows missing light or power dropped, negatives removed, the lux index calibrated to real lux, never-lit zones dropped. | `features.py` (§3, §4.1–4.2) |
+| 4 | **Reconstruct outdoor lux** | No outdoor sensor existed, so outdoor lux was derived from the real indoor sensor and NOAA solar geometry in five steps. | `features.py` (§4.3–4.4) |
+| 5 | **Define the target** | Setpoint policy (300 lx occupied / 50 lx not) turned into "the panel output that reaches the setpoint given the daylight present". | `features.py` (§4.5–4.6) → `out/dataset.parquet` |
+| 6 | **Train and choose** | Seven models scored on a chronological split, including the always-100% incumbent; XGBoost picked on an accuracy tie-break by size. | `train.py` → `laptop-server/model/` (§5–6) |
+| 7 | **Server core** | FastAPI process: WebSocket for the device, model loading, AUTO/MANUAL state machine, rolling window and energy model, JSON config. | `laptop-server/*.py` (§17–24) |
+| 8 | **Voice** | MLX Whisper for speech-to-text, a rule-based parser in four languages, edge-tts confirmations with a fallback clip, gated on the device's ack. | `laptop-server/voice/` (§25–28) |
+| 9 | **Dashboard** | React + Vite console talking to the server over REST and a live WebSocket. | `dashboard/` (Part VII) |
+| 10 | **Firmware** | Single-file ESP32 sketch: sensors, PWM panel, I2S mic and speaker on core-0 tasks, button, WebSocket client. | `esp32-firmware/` (§12–15) |
+| 11 | **Hardware bring-up** | Pins measured on the real board; boot loop, silent speaker, silent mic and WiFi issues found and fixed. | `docs/HARDWARE.md`, §31 |
+| 12 | **Integration** | Full loop running on the real board: sensors → model → panel, and voice → command → spoken reply. | §33 |
+| 13 | **mDNS + secrets** | Board finds the laptop by name, credentials moved to a gitignored `secrets.h`. | firmware §13.1 |
+| 14 | **History database** | Every real session stored in SQLite: 5 s buckets, light changes, sessions; History tab and CSV export. | `history.py` (§24.1) |
+| 15 | **Redesign** | Liquid-glass dashboard with hero gauge, readouts, Today panel and Setup tab; simulated devices labelled. | Part VII |
+
+Git history on `main` follows phases 13–15 as separate commits.
+
+## 0.2 The stack
+
+| Layer | Technology |
+|---|---|
+| Device | ESP32-WROOM-32, Arduino-ESP32 core 3.3.11; libraries `WebSockets`, `ArduinoJson`, `BH1750` |
+| Server | Python 3.11, FastAPI + uvicorn, asyncio, SQLite (stdlib `sqlite3`) |
+| ML | pandas, scikit-learn, XGBoost (training); joblib artifact (inference) |
+| Voice | `mlx-whisper` (large-v3-turbo), `edge-tts`, `soundfile` |
+| Dashboard | React 19, TypeScript, Vite 8, Recharts |
+
+## 0.3 Repository layout
+
+```
+raw/                       source datasets (gitignored)
+data-pipeline/             combine.py → features.py → train.py, config.py
+laptop-server/
+  main.py                  FastAPI app: WebSockets, REST, lifecycle
+  controller.py            the decision layer
+  state.py  predictor.py  rolling.py  history.py  config_store.py  protocol.py
+  voice/                   stt.py  nlu.py  tts.py
+  model/                   brightness_model.joblib + model_metadata.json
+  tools/mock_device.py     fake ESP32 (simulation, never recorded)
+  data/history.db          SQLite history (gitignored, created on first run)
+config/                    modes.json, settings.json
+dashboard/src/             App.tsx, api.ts, recorder.ts, theme.css, components/
+esp32-firmware/            adaptive_lighting.ino, secrets.example.h (secrets.h gitignored)
+docs/HARDWARE.md           measured pin map and quirks
+```
+
+## 0.4 Ports and addresses at a glance
+
+| What | Address | Who connects |
+|---|---|---|
+| Laptop server (REST + WebSockets) | `http://<laptop>:8000`, bound to `0.0.0.0` | dashboard, ESP32, scripts |
+| Device socket | `ws://<laptop>:8000/ws/device` | the ESP32 (client) or `mock_device.py` |
+| Dashboard live socket | `ws://<laptop>:8000/ws/dashboard` | each open dashboard tab |
+| Dashboard dev server | `http://localhost:5180` | your browser; proxies `/api` and `/ws` to :8000 |
+| Laptop's mDNS name | `Hardiks-MacBook-Air.local` (`scutil --get LocalHostName`) | the ESP32, on every WiFi reconnect |
+| ESP32 serial console | `/dev/cu.usbserial-0001` @ 115200 baud | `arduino-cli monitor` / Serial Monitor |
+| History database | `laptop-server/data/history.db` | the server; `sqlite3` for ad-hoc queries |
+
+The ESP32 opens **no port of its own** — it never hosts anything (§16.1).
 
 ---
 
@@ -133,7 +221,7 @@ Site coordinates used downstream: **lat 1.2966, lon 103.7764, UTC+8, no DST**
 | `archive (3).zip` | **Byte-identical duplicate** of the already-extracted `archive (2)/`. `combine.py` de-duplicates on filename so each floor-year counts once. |
 | **Floor 1** | No environment sensors fitted at all — no illuminance channel to learn from. |
 | Data before Mar 2019 / Jul 2018 | The sensors only came online then. Earlier coverage is empty rows. |
-| **ASHRAE db-II** | This is the one worth understanding. It is a **per-subject thermal-comfort questionnaire** — one row per human response, different buildings, different continents. It has **no illuminance column, no lighting power, and no join key** with the submetering data. Merging it produces a table that is mostly nulls and teaches the model nothing about light. Excluded deliberately, logged as a deviation in `PROGRESS.md`. |
+| **ASHRAE db-II** | This is the one worth understanding. It is a **per-subject thermal-comfort questionnaire** — one row per human response, different buildings, different continents. It has **no illuminance column, no lighting power, and no join key** with the submetering data. Merging it produces a table that is mostly nulls and teaches the model nothing about light. Excluded deliberately (see §30). |
 
 ### 3.3 The two facts that shape everything downstream
 
@@ -557,7 +645,7 @@ no idea what a mode is, what AUTO means, or what it just said.
 
 | Group | Key values |
 |---|---|
-| 1.1 Network | `WIFI_SSID`, `WIFI_PASSWORD`, `SERVER_HOST`, `SERVER_PORT 8000`, `SERVER_PATH "/ws/device"`, `DEVICE_ID "esp32-room-1"`, `FIRMWARE_VERSION "2.0.0"` |
+| 1.1 Network | `WIFI_SSID`, `WIFI_PASSWORD`, `SERVER_HOST` (from gitignored `secrets.h`), `SERVER_MDNS_NAME`, `SERVER_PORT 8000`, `SERVER_PATH "/ws/device"`, `DEVICE_ID "esp32-room-1"`, `FIRMWARE_VERSION "2.0.0"` |
 | 1.2 Pins | the table in §8 |
 | 1.3 Panel | `LIGHT_PWM_FREQ_HZ 5000`, `LIGHT_PWM_RESOLUTION 8`, `LIGHT_INVERT_OUTPUT 0`, `LIGHT_RAMP_STEP 3`, `LIGHT_RAMP_INTERVAL_MS 8` (⇒ full sweep ~680 ms) |
 | 1.4 Sensors | `SENSOR_SAMPLE_INTERVAL_MS 130`, `SENSOR_EMA_ALPHA 0.25`, `TELEMETRY_INTERVAL_MS 1000` |
@@ -567,9 +655,11 @@ no idea what a mode is, what AUTO means, or what it just said.
 | 1.8 Button | `BUTTON_DEBOUNCE_MS 35`, `BUTTON_DOUBLECLICK_MS 350`, `BUTTON_LONGPRESS_MS 900` |
 | 1.9 System | `SERIAL_BAUD 115200`, `JSON_RX_MAX_BYTES 2048` |
 
-⚠️ **`WIFI_SSID`, `WIFI_PASSWORD` and `SERVER_HOST` are compile-time constants.** Changing
-network *or* the laptop getting a new DHCP lease **requires a reflash**. The credentials
-are in the source — keep that in mind before pushing the firmware anywhere public.
+**Credentials live in `esp32-firmware/secrets.h`** (gitignored; copy from
+`secrets.example.h`). On every WiFi (re)connect the board resolves the laptop by its mDNS
+name (`SERVER_MDNS_NAME`, e.g. `Hardiks-MacBook-Air.local`) and only falls back to the
+fixed `SERVER_HOST` if that fails — so a new DHCP lease no longer needs a reflash. A new
+WiFi network still does.
 
 ### 13.2 Light panel
 
@@ -734,7 +824,7 @@ Authoritative source: `laptop-server/protocol.py`. **Read it before touching any
 **ESP32 → laptop**
 
 ```jsonc
-{"type": "hello",  "device_id": "esp32-room-1", "fw": "2.0.0"}
+{"type": "hello",  "device_id": "esp32-room-1", "fw": "2.0.0"}   // mock adds "simulated": true
 {"type": "sensor", "indoor_lux": 8.3, "outdoor_lux": 455.0}
 {"type": "sensor_unavailable", "reason": "indoor BH1750 (0x23) not responding"}
 {"type": "ack",    "command_id": "a3f9...", "brightness": 0.62}   // command APPLIED
@@ -807,6 +897,36 @@ This exists because a bug: connecting a test client **silently overwrote
 believed nothing was attached and could no longer command it. Now the old socket is closed
 properly so state always matches reality.
 
+### 16.6 The life of one sensor reading
+
+Every second, end to end:
+
+```
+ ESP32 (core 1, loop)
+  1. sensorUpdate() polls both BH1750s every 130 ms, EMA-smooths (α 0.25)
+  2. every 1000 ms netUpdate() sends   {"type":"sensor","indoor_lux":…,"outdoor_lux":…}
+     — or {"type":"sensor_unavailable","reason":…} if either sensor is down
+        │  WebSocket text frame over WiFi
+        ▼
+ Laptop (main.py → DeviceSession.handle_text)
+  3. Controller.on_sensor(indoor, outdoor)
+  4. predictor.predict(indoor, outdoor, now)            → 0.0–1.0   (§19)
+  5. state.resolve_brightness(predicted)                → AUTO: prediction, MANUAL: held value
+  6. window.add(...)                                    → live chart + session energy (§22)
+  7. history.on_reading(...)                            → into the current 5 s bucket (§24.1)
+  8. send_brightness(...) → {"type":"brightness","command_id":…,"value":0.62}
+     history.on_command(...) logs it if it moved ≥ 2 % (or a person asked)
+        │
+        ▼
+ ESP32
+  9. setLightBrightness(duty) — ramps the PWM on GPIO 23 — then replies {"type":"ack",…}
+        │
+        ▼
+ Laptop
+ 10. broadcast_state() → every dashboard socket gets {"type":"state", …}   (Part VII)
+ 11. when the 5 s bucket closes, one averaged row is written to SQLite on a writer thread
+```
+
 ---
 
 # PART V — THE LAPTOP SERVER
@@ -839,7 +959,7 @@ exercised with no WebSocket and no device attached.**
 Every second, `{"type":"sensor"}` arrives and `Controller.on_sensor()` runs:
 
 ```python
-async def on_sensor(self, indoor_lux, outdoor_lux):
+async def on_sensor(self, indoor_lux, outdoor_lux, simulated=False):
     self.sensor_error = None
     self.last_indoor_lux, self.last_outdoor_lux = float(indoor_lux), float(outdoor_lux)
     self.last_sensor_at = time.time()
@@ -855,8 +975,13 @@ async def on_sensor(self, indoor_lux, outdoor_lux):
     snapshot = self.state.snapshot()
     self.window.add(indoor_lux, outdoor_lux, brightness, snapshot["mode"], snapshot["active_mode_name"])
 
-    # 4. Command the device
-    await self.send_brightness(brightness)
+    # 4. Store it (real readings only) and command the device
+    if not simulated:
+        self.history.on_reading(indoor_lux, outdoor_lux, brightness,
+                                snapshot["mode"], snapshot["active_mode_name"])
+    await self.send_brightness(
+        brightness, cause=None if simulated
+        else ("auto" if snapshot["mode"] == AUTO else "hold"))
 
     # 5. Tell every dashboard
     await self.broadcast_state(predicted=predicted)
@@ -953,53 +1078,123 @@ hypothetical usage equally, so the savings **percentage** stays correct.
 Nothing here is persisted. Restarting the server starts the graph over — intended
 behaviour. The long-term record is the separate SQLite history (§24.1).
 
-## 23. The API surface
+## 23. API reference
 
-**WebSockets**
+Base URL **`http://<laptop>:8000`** (from the dashboard dev server, the same paths under
+`http://localhost:5180` are proxied). JSON in and out unless noted. CORS is open because
+the dashboard runs on a different port in development. **There is no authentication** —
+trusted LAN only.
 
-| Path | Who | What |
+### 23.1 WebSockets
+
+| Path | Client | Traffic |
 |---|---|---|
-| `/ws/device` | the ESP32 | the protocol in §16.2 |
-| `/ws/dashboard` | browser tabs | receives full state on connect, then a live event stream |
+| `/ws/device` | the ESP32 | the device protocol in §16.2 — JSON text frames plus binary PCM |
+| `/ws/dashboard` | each dashboard tab | server → browser only: a full `state` and the `series` on connect, then live events |
 
-Each dashboard gets **its own `asyncio.Queue` (maxsize 32)** so a slow tab cannot block the
-others or the device loop. Overflowing queues **drop** rather than stall — a dashboard that
-far behind resyncs from the next full state message.
+**Dashboard stream message types**
 
-**REST**
-
-| Method | Path | Purpose |
+| `type` | When | Payload |
 |---|---|---|
-| GET | `/api/state` | full status snapshot |
-| GET | `/api/series` | the rolling window for the chart |
-| GET/POST | `/api/modes` | list / create a mode |
-| PUT/DELETE | `/api/modes/{id}` | edit / delete |
-| GET/PUT | `/api/settings` | magnitude steps, timeout, wattage |
-| POST | `/api/override` | manual control: `{auto}` \| `{mode_id}` \| `{brightness}` |
-| POST | `/api/light/sweep` | **panel self-test — the LED verification** |
-| POST | `/api/voice/record` | ask the device to capture |
-| POST | `/api/voice/audio` | upload audio (laptop-mic fallback path) |
-| POST | `/api/simulate/sensor` | ⚠️ **opt-in simulation** |
-| POST | `/api/simulate/voice` | ⚠️ **opt-in simulation** |
-| GET | `/api/history/summary` | energy, savings, change counts, connected time for a range |
-| GET | `/api/history/samples` | stored 5 s buckets; downsampled server-side past `max_points` |
-| GET | `/api/history/changes` | the light-change log, newest first |
-| GET | `/api/history/sessions` | device connect/disconnect sessions |
-| GET | `/api/history/export/{samples,light_changes}.csv` | raw rows as CSV |
+| `state` | on connect, every sensor reading, every change | the full status object below |
+| `series` | on connect | `{"points": [...]}` — the rolling window for the chart |
+| `voice_result` | a command was processed | transcript, intent, action, applied, brightness, savings_percent, confirmation_text, state |
+| `voice_error` | transcription failed or heard nothing | `{"error": "..."}` |
+| `recording_started` | the ESP32 was asked to record | `{"source": "esp32", "duration_ms": 5000}` |
 
-Every history endpoint takes optional `start` / `end` in unix seconds.
+Each dashboard has its own `asyncio.Queue` (maxsize 32), so a slow tab cannot block the
+others or the device loop; an overflowing queue drops messages and resyncs from the next
+`state`.
 
-CORS is enabled because the dashboard runs on a different port in development.
+### 23.2 The status object (`GET /api/state`, and every `state` message)
 
-**The `status()` payload distinguishes two facts that are not the same thing:**
-
-```python
-"device_connected": self.device is not None,     # a board is on the socket
-"readings_live":    time.time() - self.last_sensor_at < 15.0,   # it's supplying data
-"sensor_error":     self.sensor_error,           # and why not, if not
+```jsonc
+{
+  "type": "state",
+  "mode": "AUTO",                     // or "MANUAL"
+  "active_mode_id": null,             // e.g. "reading" while a named mode is held
+  "active_mode_name": null,
+  "manual_seconds_remaining": null,   // countdown while MANUAL
+  "last_reason": "startup",           // why the state last changed
+  "indoor_lux": 368.0,
+  "outdoor_lux": 84471.0,
+  "brightness": 0.29,                 // what the panel was last commanded, 0–1
+  "predicted_brightness": 0.29,       // what AUTO would set (null outside a sensor tick)
+  "device_connected": true,           // a device is on /ws/device
+  "device_id": "esp32-room-1",
+  "device_simulated": false,          // true for the mock — UI shows SIMULATED DEVICE
+  "readings_live": true,              // it is actually supplying readings
+  "sensor_error": null,               // reason when readings are unavailable
+  "panel_rated_watts": 18.0,
+  "energy": {"actual_wh": 0.07, "full_wh": 0.24, "saved_wh": 0.17,
+             "savings_percent": 71.0, "samples": 20},
+  "model": {"loaded": true, "model": "XGBoost", "metrics": {"mae": 0.1328, ...}}
+}
 ```
 
-A board with no light sensors fitted is *connected* but has nothing to report. See §26.
+`device_connected` and `readings_live` are separate facts: a board with no sensors is
+connected but has nothing to report. Both drop to false the instant the device leaves.
+
+### 23.3 REST endpoints
+
+**Live state and control**
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/api/health` | — | `{"ok": true, "device_connected": false}` |
+| GET | `/api/state` | — | the status object (§23.2) |
+| GET | `/api/series` | — | `{"points": [...], "energy": {...}}` — the in-memory window |
+| POST | `/api/override` | one of `{"auto": true}` · `{"mode_id": "reading"}` · `{"brightness": 0.6}` | the state-machine snapshot; 400 if empty or unknown mode |
+| POST | `/api/light/sweep` | — | `{"ok": true, "note": ...}`; **409** if no device. Ramps the panel 0→255→0 |
+
+**Modes and settings** (written straight through to `config/*.json`)
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/api/modes` | — | `{"modes": [{"id","name","target_lux"}, ...]}` |
+| POST | `/api/modes` | `{"name": "Movie", "target_lux": 60}` | the new mode (id is a slug, de-duplicated); 400 if invalid, lux 0–20000 |
+| PUT | `/api/modes/{id}` | `{"name"?, "target_lux"?}` | the updated mode; 404 if missing |
+| DELETE | `/api/modes/{id}` | — | `{"deleted": id}`; deleting the held mode returns the system to AUTO |
+| GET | `/api/settings` | — | the settings object (§24) |
+| PUT | `/api/settings` | any subset of the settings keys | the merged settings; unknown keys ignored |
+
+**Voice**
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST | `/api/voice/record` | `{"duration_ms": 5000}` (optional) | `{"source": "esp32", ...}`, or `"source": null` if no device — then the UI offers the laptop mic |
+| POST | `/api/voice/audio` | raw **WAV**, 16 kHz mono s16, `content-type: audio/wav` | the voice result plus `audio_b64` (the spoken reply as base64 PCM) and `"source": "browser"` |
+| POST | `/api/simulate/voice` | `{"transcript": "thoda tez karo"}` | the voice result; runs NLU → state → TTS without a mic. Changes the real panel and **is** logged, as `voice_typed` |
+
+**Simulation (opt-in, never stored)**
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| POST | `/api/simulate/sensor` | `{"indoor_lux": 450, "outdoor_lux": 80000}` | `{"brightness", "state"}`; drives the system like a real reading but is **never written to history** |
+
+**History** (SQLite; `start` / `end` are optional unix seconds — omit for "beginning" / "now")
+
+| Method | Path | Query | Returns |
+|---|---|---|---|
+| GET | `/api/history/summary` | `start`, `end` | buckets, readings, unavailable, actual/full/saved Wh, savings_percent, avg lux, changes, changes_by_source, connected_seconds, recording |
+| GET | `/api/history/samples` | `start`, `end`, `max_points` (1500) | `{"step_seconds", "downsampled", "points": [...]}` — readings-weighted downsampling past `max_points` |
+| GET | `/api/history/changes` | `start`, `end`, `limit` (500) | `{"changes": [...]}`, newest first |
+| GET | `/api/history/sessions` | `start`, `end`, `limit` (200) | `{"sessions": [...]}`, newest first |
+| GET | `/api/history/export/samples.csv` | `start`, `end` | every sample row as CSV (download) |
+| GET | `/api/history/export/light_changes.csv` | `start`, `end` | every change row as CSV (download) |
+
+### 23.4 Example requests
+
+```bash
+curl -s localhost:8000/api/state | python3 -m json.tool
+curl -sX POST localhost:8000/api/override -H 'content-type: application/json' -d '{"brightness":0.6}'
+curl -sX POST localhost:8000/api/override -H 'content-type: application/json' -d '{"mode_id":"reading"}'
+curl -sX POST localhost:8000/api/override -H 'content-type: application/json' -d '{"auto":true}'
+curl -sX POST localhost:8000/api/simulate/voice -H 'content-type: application/json' -d '{"transcript":"thoda kam karo"}'
+curl -sX PUT  localhost:8000/api/settings -H 'content-type: application/json' -d '{"manual_timeout_seconds":600}'
+curl -s "localhost:8000/api/history/summary?start=$(date -v0H -v0M -v0S +%s)"   # today (macOS date)
+curl -s localhost:8000/api/history/export/light_changes.csv -o changes.csv
+```
 
 ## 24. Persisted state — config and history
 
@@ -1233,18 +1428,36 @@ to Microsoft must not delay the dashboard learning what happened.
 # PART VII — THE DASHBOARD
 
 React + TypeScript + Vite, `dashboard/`, dev server on **port 5180** (5173/5174 are usually
-taken by the BolBiz project).
+taken by other projects). Liquid-glass design: frosted panels over a background glow
+whose amber intensity follows the panel's real output (`--light` in `theme.css`).
 
-| Component | Shows |
-|---|---|
-| `StatusPanel.tsx` | mode, indoor/outdoor lux, panel %, connection state |
-| `EnergyChart.tsx` | live 1 s chart: actual watts vs hypothetical 100% |
-| `HistoryView.tsx` | **History tab** — stored range: energy/savings tiles, panel output + lux charts with real gaps, change log, sessions, CSV export |
-| `Controls.tsx` | manual override — auto / mode / brightness slider / **Test panel** |
-| `ModesManager.tsx` | add / edit / delete modes |
-| `SettingsPanel.tsx` | magnitude steps, MANUAL timeout, rated wattage |
-| `VoicePanel.tsx` | push-to-talk, transcript, parsed intent, confirmation |
-| `api.ts` / `recorder.ts` | REST + WS client, browser audio capture |
+Three tabs, kept in the URL hash (`#history`, `#setup`):
+
+| Tab | Component | Shows |
+|---|---|---|
+| Live | `Hero.tsx` | ring gauge of panel output, AUTO's suggestion, mode headline |
+| Live | `Controls.tsx` | AUTO switch, brightness slider, mode tiles, **Test panel** |
+| Live | `Readouts.tsx` | indoor / daylight / power / session savings with sparklines |
+| Live | `EnergyChart.tsx` | 1 s chart: actual watts vs hypothetical 100% |
+| Live | `VoicePanel.tsx` | push-to-talk, transcript, parsed intent, confirmation |
+| Live | `TodayPanel.tsx` | today's stored savings + latest light changes (from SQLite) |
+| History | `HistoryView.tsx` | stored range: totals, charts with real gaps, change log, sessions, CSV export |
+| Setup | `ModesManager.tsx`, `SettingsPanel.tsx` | modes CRUD; step sizes, timeout, wattage, history interval |
+
+`api.ts` is the REST + WebSocket client, `recorder.ts` the browser audio capture,
+`components/ui.tsx` the shared section header and sparkline.
+
+**How it gets data.** On load, `useLiveData()` opens `/ws/dashboard` and reconnects every
+1.5 s if dropped. Each `state` message updates the gauge, readouts and controls, and —
+only while `readings_live` — appends a point to the chart (capped at 600). Clicks go out
+as REST calls (§23.3). The History tab and Today panel poll the `/api/history/*`
+endpoints every 15 s while showing a range that ends "now". In development Vite proxies
+`/api` and `/ws` to `localhost:8000` (`vite.config.ts`), so every URL in the app is
+origin-relative.
+
+**Honesty in the UI.** Readings show only while a device is connected *and* reporting;
+otherwise `—`. A mock device triggers a red **SIMULATED DEVICE** badge and banner
+(`device_simulated` in `/api/state`).
 
 **Push-to-talk uses the ESP32 microphone only.** It originally fell back to the laptop mic
 when the board was offline, which meant you could not tell which mic you had just tested.
@@ -1293,7 +1506,7 @@ The numbering comes from the original build spec. These are the ones cited in th
 | **#9** | **Linear power model** — X% brightness draws X% of rated wattage |
 | **#13** | The spoken confirmation is **gated on the device's applied-ack** |
 
-Plus the recorded deviations from the spec (`PROGRESS.md`):
+Deviations from the original spec:
 
 - ASHRAE db-II excluded from the combined dataset
 - Outdoor lux reconstructed, not measured *(approved before implementation)*
@@ -1317,7 +1530,7 @@ Kept because most are non-obvious and would otherwise be rediscovered.
 | Board streaming but server said "no device" | A second WS client silently overwrote `controller.device` | close the previous socket properly |
 | Dashboard full of fake lux | A mock device left running | mock is opt-in, announced |
 | Stale readings after disconnect | Dashboard kept last values | separate `device_connected` from `readings_live` |
-| **Server unreachable after moving network** | `SERVER_HOST` is a compile-time constant and the laptop's DHCP lease changed | **check `ipconfig getifaddr en0` before every flash** |
+| Server unreachable after moving network | `SERVER_HOST` was a compile-time constant and the laptop's DHCP lease changed | mDNS lookup on every reconnect, IP only as fallback |
 
 ## 32. Known limitations
 
@@ -1345,8 +1558,7 @@ Kept because most are non-obvious and would otherwise be rediscovered.
 - **One device at a time.**
 - **No authentication** on the API or either WebSocket. Fine on a trusted LAN, not fine
   anywhere else.
-- WiFi credentials and the server IP are **compile-time constants** — every network change
-  needs a reflash.
+- WiFi credentials are **compile-time** — joining a different network needs a reflash.
 
 ---
 
@@ -1354,8 +1566,8 @@ Kept because most are non-obvious and would otherwise be rediscovered.
 
 ## 33. Current status
 
-**All six phases of the build spec are implemented, and the whole system has run end to
-end on real hardware.**
+**Everything in the build spec is implemented and runs end to end on the real board.**
+Added since: SQLite history (§24.1), mDNS server discovery, the dashboard redesign (Part VII).
 
 ### Confirmed working on the physical board
 
@@ -1370,24 +1582,12 @@ end on real hardware.**
 | PWM path | `[light] commanded 100% -> duty 255/255 on GPIO 23` |
 | Dashboard | Live chart, modes CRUD, settings, push-to-talk |
 
-### ⚠️ Two things NOT yet verified — neither is missing code
-
-1. **Does the LED physically light?** The panel was **disconnected** during all testing, so
-   "off" was correct behaviour, not a fault. The software path is proven down to the duty
-   cycle. Reconnect it and press **Test panel** (or `POST /api/light/sweep`) — it ramps
-   0→255→0 over ~2.5 s. **If it stays dark while the serial log shows duty changing, it is
-   wiring — first suspect is an active-LOW driver, fixed with
-   `#define LIGHT_INVERT_OUTPUT 1`.**
-
-2. **Whisper on a real human voice.** Every voice test so far captured **silence** —
-   recordings were triggered remotely with nobody speaking, and the system correctly heard
-   nothing and said "sorry, I did not understand". The plumbing is proven; **accuracy on a
-   real accent and on the Hindi/Marathi/Hinglish command set is unproven.**
+### Not yet measured
+- **Whisper accuracy** on real voices across English, Hindi, Marathi and Hinglish has not
+  been benchmarked — the pipeline works, the per-language error rate is unknown.
 
 ### Open improvements
 - Tie the INMP441's L/R pin to GND so slot auto-detection stops being needed.
-- Switch `SERVER_HOST` to **mDNS** (`<your-laptop>.local`) so DHCP changes stop
-  requiring a reflash.
 - The panel sweep blocks `loop()` for ~2.4 s — deliberate, but the last blocking call.
 
 ## 34. Running it
@@ -1431,10 +1631,9 @@ python train.py       # -> laptop-server/model/ + out/model_comparison.csv
 
 ## 35. Session checklist
 
-1. **`ipconfig getifaddr en0`** — does it match `SERVER_HOST` in the firmware
-   (`adaptive_lighting.ino` line ~74)? **If not, update and reflash.** The ESP32 must be on
-   the same subnet: if the laptop is `192.168.1.x` and the board comes up `192.168.0.x`,
-   they cannot see each other.
+1. **Same network.** The board must join the same 2.4 GHz network as the laptop
+   (`secrets.h`). It finds the laptop by mDNS; if the serial log says the mDNS lookup
+   failed, the fallback `SERVER_HOST` in `secrets.h` must match `ipconfig getifaddr en0`.
 2. Start the server, then the dashboard.
 3. Power the ESP32; watch the serial monitor at **115200** for the boot report.
 4. Confirm `device_connected: true` **and** both lux values moving.
@@ -1455,4 +1654,5 @@ python train.py       # -> laptop-server/model/ + out/model_comparison.csv
 | Server says no device, but board is streaming | A second client displaced it (§16.5) |
 | Confirmation audio crackles | Link margin, not the audio code (§11) |
 | Dashboard shows `—` for lux | Correct behaviour — check `sensor_error` for the reason (§29) |
-| Board can't reach the server at all | `SERVER_HOST` vs `ipconfig getifaddr en0` (§35) |
+| Board can't reach the server at all | Serial `[mdns]` line; then fallback `SERVER_HOST` vs `ipconfig getifaddr en0` (§35) |
+| History tab empty | Only real-device sessions are stored — is the ESP32 (not the mock) connected? |
