@@ -324,6 +324,9 @@ class Controller:
             # whether it is currently supplying readings. A board with no light
             # sensors fitted is connected but has nothing to report.
             "device_connected": self.device is not None,
+            # The dashboard must be able to tell a mock device from the real board.
+            "device_id": getattr(self.device, "device_id", None),
+            "device_simulated": bool(getattr(self.device, "simulated", False)),
             "readings_live": connected,
             "sensor_error": self.sensor_error,
             # The chart needs the rated wattage to turn an output fraction into watts,

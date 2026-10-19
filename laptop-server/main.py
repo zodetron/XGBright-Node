@@ -64,6 +64,7 @@ class DeviceSession:
         self.socket = socket
         self.device_id = "unknown"
         self.recording = False        # whether this session owns the open history row
+        self.simulated = False        # a mock device: shown as such, never recorded
         self._send_lock = asyncio.Lock()
         self._pending_acks = {}
 
@@ -124,10 +125,12 @@ class DeviceSession:
                   f"(fw {message.get('fw', '?')})")
             # History starts at the hello, and only for real hardware.
             if is_simulated(self.device_id, message):
+                self.simulated = True
                 print("[history] simulated device — not recording")
             else:
                 await history.start_session(self.device_id, message.get("fw"))
                 self.recording = True
+            await controller.broadcast_state()
 
         elif kind == protocol.SENSOR:
             await controller.on_sensor(
@@ -224,6 +227,9 @@ async def device_socket(socket: WebSocket):
     finally:
         if controller.device is session:
             controller.device = None
+            # Readings from a device that has gone are no longer current — without
+            # this the dashboard kept showing them for DEVICE_TIMEOUT_SECONDS.
+            controller.last_sensor_at = None
         if session.recording:
             session.recording = False
             history.end_session(
