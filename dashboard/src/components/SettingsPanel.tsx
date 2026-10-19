@@ -153,6 +153,13 @@ export function SettingsPanel({ onError }: { onError: (message: string) => void 
           onChange={(value) => patch({ rolling_window_seconds: value })}
           min={30} suffix="sec"
         />
+        <Field
+          label="History interval"
+          hint="readings are averaged into one stored row per interval"
+          value={settings.history_interval_seconds}
+          onChange={(value) => patch({ history_interval_seconds: value })}
+          min={1} suffix="sec"
+        />
       </div>
     </div>
   )

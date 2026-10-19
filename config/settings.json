@@ -8,5 +8,6 @@
   "panel_rated_watts": 18.0,
   "rolling_window_seconds": 300,
   "sensor_target_lux_default": 500,
-  "panel_full_output_lux": 500
+  "panel_full_output_lux": 500,
+  "history_interval_seconds": 5
 }

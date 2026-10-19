@@ -141,9 +141,22 @@ button.primary {
 button.primary:hover:not(:disabled) { background: var(--amber-soft); }
 
 button.ghost { background: transparent; border-color: var(--border); }
+
+/* Download links (CSV exports) dressed as ghost buttons. */
+a.button-link {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 11px;
+  transition: color 0.15s, border-color 0.15s;
+}
+a.button-link:hover { color: var(--text); border-color: var(--border-hi); }
 button.danger:hover:not(:disabled) { color: var(--rose); border-color: var(--rose); }
 
-input[type='text'], input[type='number'] {
+input[type='text'], input[type='number'], input[type='date'] {
   font-family: var(--mono);
   font-size: 13px;
   color: var(--text);
@@ -153,6 +166,7 @@ input[type='text'], input[type='number'] {
   padding: 8px 11px;
   width: 100%;
 }
+input[type='date'] { color-scheme: dark; padding: 6px 10px; }
 input:focus {
   outline: none;
   border-color: var(--amber);

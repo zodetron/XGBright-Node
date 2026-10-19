@@ -12,6 +12,7 @@ import { api, useLiveData } from './api'
 import type { Mode } from './api'
 import { Controls } from './components/Controls'
 import { EnergyChart } from './components/EnergyChart'
+import { HistoryView } from './components/HistoryView'
 import { ModesManager } from './components/ModesManager'
 import { SettingsPanel } from './components/SettingsPanel'
 import { StatusPanel } from './components/StatusPanel'
@@ -35,8 +36,53 @@ function ConnectionDot({ live, label }: { live: boolean; label: string }) {
   )
 }
 
+type Tab = 'live' | 'history'
+
+function readTab(): Tab {
+  return location.hash === '#history' ? 'history' : 'live'
+}
+
+function Tabs({ tab, onChange }: { tab: Tab; onChange: (tab: Tab) => void }) {
+  return (
+    <div
+      className="row"
+      style={{
+        gap: 2, padding: 3, borderRadius: 'var(--radius-sm)',
+        background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+      }}
+    >
+      {(['live', 'history'] as Tab[]).map((key) => (
+        <button
+          key={key}
+          onClick={() => onChange(key)}
+          style={{
+            padding: '5px 14px', fontSize: 12.5, border: 'none',
+            background: tab === key ? 'var(--surface-hi)' : 'transparent',
+            color: tab === key ? 'var(--text)' : 'var(--text-faint)',
+          }}
+        >
+          {key === 'live' ? 'Live' : 'History'}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function App() {
   const { state, points, connected, lastVoice } = useLiveData()
+  // The tab lives in the URL hash so a reload — or a shared link — lands on it.
+  const [tab, setTab] = useState<Tab>(readTab)
+
+  useEffect(() => {
+    const onHash = () => setTab(readTab())
+    addEventListener('hashchange', onHash)
+    return () => removeEventListener('hashchange', onHash)
+  }, [])
+
+  const changeTab = (next: Tab) => {
+    location.hash = next === 'history' ? 'history' : ''
+    setTab(next)
+  }
   const [modes, setModes] = useState<Mode[]>([])
   const [error, setError] = useState<string | null>(null)
 
@@ -71,6 +117,7 @@ export default function App() {
           </div>
         </div>
         <div className="row" style={{ gap: 18 }}>
+          <Tabs tab={tab} onChange={changeTab} />
           <ConnectionDot live={connected} label={connected ? 'Server live' : 'Reconnecting…'} />
           <ConnectionDot
             live={!!state?.device_connected}
@@ -91,6 +138,7 @@ export default function App() {
         </div>
       )}
 
+      {tab === 'history' ? <HistoryView onError={setError} /> : (
       <div
         style={{
           display: 'grid',
@@ -111,6 +159,7 @@ export default function App() {
           <SettingsPanel onError={setError} />
         </div>
       </div>
+      )}
     </div>
   )
 }

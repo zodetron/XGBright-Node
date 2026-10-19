@@ -7,7 +7,8 @@
  * actual is a filled amber area beneath it, and the space between them is tinted teal.
  * Reading the saving requires no arithmetic and no legend lookup.
  *
- * Rolling window only — nothing here is persisted, and a server restart starts it over.
+ * Rolling window only — a server restart starts it over. The long-term record is
+ * the History tab.
  */
 
 import {
@@ -80,7 +81,7 @@ export function EnergyChart({
         <div>
           <div className="label">Power draw · live</div>
           <div style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 4 }}>
-            {points.length} samples over {Math.round(windowSeconds)}s · in-memory only
+            {points.length} samples over {Math.round(windowSeconds)}s · in-memory · full record in History
           </div>
         </div>
 

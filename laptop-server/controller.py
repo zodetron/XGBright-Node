@@ -109,7 +109,13 @@ class Controller:
             return None
         if cause is not None:
             snapshot = self.state.snapshot()
-            self.history.on_command(brightness, cause, snapshot["last_reason"],
+            reason = snapshot["last_reason"]
+            if cause == "auto":
+                # In AUTO the model made the call; last_reason only says how AUTO
+                # was entered, which is context, not the cause.
+                reason = ("model prediction" if reason == "startup"
+                          else f"model prediction ({reason})")
+            self.history.on_command(brightness, cause, reason,
                                     snapshot["mode"], snapshot["active_mode_name"],
                                     transcript)
         command_id = uuid.uuid4().hex[:12]

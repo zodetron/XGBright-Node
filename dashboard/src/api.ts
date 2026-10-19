@@ -19,6 +19,7 @@ export type Settings = {
   rolling_window_seconds: number
   sensor_target_lux_default: number
   panel_full_output_lux: number
+  history_interval_seconds: number
 }
 
 export type Energy = {
@@ -67,6 +68,93 @@ export type VoiceResult = {
   savings_percent: number
   confirmation_text: string
   intent: { kind: string; language: string }
+}
+
+/* --- HISTORY (SQLite, real-device sessions only) -------------------------- */
+
+/** One stored bucket. Lux and brightness are null when no reading landed in it. */
+export type HistoryPoint = {
+  t_start: number
+  t_end: number
+  readings: number
+  unavailable: number
+  indoor_lux_avg: number | null
+  indoor_lux_min: number | null
+  indoor_lux_max: number | null
+  outdoor_lux_avg: number | null
+  outdoor_lux_min: number | null
+  outdoor_lux_max: number | null
+  brightness_avg: number | null
+  actual_wh: number
+  full_wh: number
+  mode?: string | null
+  mode_name?: string | null
+  sensor_error?: string | null
+}
+
+export type LightChange = {
+  id: number
+  session_id: number
+  t: number
+  from_brightness: number | null
+  to_brightness: number
+  source: 'auto' | 'hold' | 'voice' | 'voice_typed' | 'dashboard'
+  reason: string | null
+  mode: string | null
+  mode_name: string | null
+  transcript: string | null
+}
+
+export type DeviceSessionRow = {
+  id: number
+  device_id: string
+  firmware: string | null
+  connected_at: number
+  disconnected_at: number | null
+  end_reason: string | null
+}
+
+export type HistorySummary = {
+  buckets: number
+  readings: number
+  unavailable: number
+  actual_wh: number
+  full_wh: number
+  saved_wh: number
+  savings_percent: number | null
+  indoor_lux_avg: number | null
+  outdoor_lux_avg: number | null
+  first_t: number | null
+  last_t: number | null
+  changes: number
+  changes_by_source: Record<string, number>
+  connected_seconds: number
+  recording: boolean
+}
+
+function rangeQuery(start: number | null, end: number | null, extra = '') {
+  const params = new URLSearchParams()
+  if (start != null) params.set('start', String(start))
+  if (end != null) params.set('end', String(end))
+  const query = params.toString()
+  return query ? `?${query}${extra && `&${extra}`}` : extra ? `?${extra}` : ''
+}
+
+export const historyApi = {
+  summary: (start: number | null, end: number | null) =>
+    request<HistorySummary>(`/api/history/summary${rangeQuery(start, end)}`),
+  samples: (start: number | null, end: number | null, maxPoints = 1200) =>
+    request<{ step_seconds: number; downsampled: boolean; points: HistoryPoint[] }>(
+      `/api/history/samples${rangeQuery(start, end, `max_points=${maxPoints}`)}`),
+  changes: (start: number | null, end: number | null, limit = 300) =>
+    request<{ changes: LightChange[] }>(
+      `/api/history/changes${rangeQuery(start, end, `limit=${limit}`)}`)
+      .then((r) => r.changes),
+  sessions: (start: number | null, end: number | null) =>
+    request<{ sessions: DeviceSessionRow[] }>(
+      `/api/history/sessions${rangeQuery(start, end)}`).then((r) => r.sessions),
+  exportUrl: (table: 'samples' | 'light_changes', start: number | null,
+    end: number | null) => `/api/history/export/${table}.csv${rangeQuery(start, end)}`,
 }
 
 /* --- REST ---------------------------------------------------------------- */
