@@ -15,6 +15,7 @@ import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import type { Point, SystemState } from '../api'
+import { SectionHead } from './ui'
 
 function clockLabel(seconds: number) {
   const date = new Date(seconds * 1000)
@@ -76,40 +77,38 @@ export function EnergyChart({
   const windowSeconds = points.length > 1 ? points[points.length - 1].t - points[0].t : 0
 
   return (
-    <div className="card" style={{ padding: '20px 20px 12px' }}>
-      <div className="between" style={{ marginBottom: 18 }}>
-        <div>
-          <div className="label">Power draw · live</div>
-          <div style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 4 }}>
-            {points.length} samples over {Math.round(windowSeconds)}s · in-memory · full record in History
-          </div>
-        </div>
-
-        <div className="row" style={{ gap: 26 }}>
-          <div style={{ textAlign: 'right' }}>
-            <div className="label">Energy saved</div>
-            <div
-              className="metric"
-              style={{ fontSize: 26, color: 'var(--teal)', marginTop: 5 }}
-            >
-              {(energy?.savings_percent ?? 0).toFixed(0)}
-              <span className="unit">%</span>
+    <section className="glass rise" style={{ padding: '24px 22px 14px' }}>
+      <SectionHead
+        eyebrow={`Power · last ${Math.round(windowSeconds)}s · ${points.length} samples`}
+        title={<>Draw vs. <span className="accent-serif">always-on</span></>}
+        right={
+          <div className="row" style={{ gap: 22 }}>
+            <div style={{ textAlign: 'right' }}>
+              <div className="eyebrow">Saved</div>
+              <div className="metric" style={{ fontSize: 30, color: 'var(--teal)', marginTop: 6 }}>
+                {energy && energy.full_wh > 0 ? energy.savings_percent.toFixed(0) : '—'}
+                <span className="unit">%</span>
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div className="eyebrow">Session</div>
+              <div className="metric" style={{ fontSize: 30, color: 'var(--text-dim)', marginTop: 6 }}>
+                {(energy?.saved_wh ?? 0).toFixed(2)}
+                <span className="unit">Wh</span>
+              </div>
             </div>
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <div className="label">This session</div>
-            <div
-              className="metric"
-              style={{ fontSize: 26, color: 'var(--text-dim)', marginTop: 5 }}
-            >
-              {(energy?.saved_wh ?? 0).toFixed(2)}
-              <span className="unit">Wh</span>
-            </div>
+        }
+      />
+
+      {points.length === 0 && (
+        <div style={{ height: 0, position: 'relative' }}>
+          <div style={{ position: 'absolute', top: 110, left: 0, right: 0, textAlign: 'center', fontSize: 13, color: 'var(--text-faint)', zIndex: 1 }}>
+            Waiting for live readings from the ESP32
           </div>
         </div>
-      </div>
-
-      <ResponsiveContainer width="100%" height={280}>
+      )}
+      <ResponsiveContainer width="100%" height={260}>
         <AreaChart data={data} margin={{ top: 4, right: 24, bottom: 0, left: -12 }}>
           <defs>
             <linearGradient id="fill-actual" x1="0" y1="0" x2="0" y2="1">
@@ -185,6 +184,6 @@ export function EnergyChart({
           </span>
         </div>
       </div>
-    </div>
+    </section>
   )
 }

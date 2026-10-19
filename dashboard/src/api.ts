@@ -42,6 +42,8 @@ export type SystemState = {
   brightness: number
   predicted_brightness: number | null
   device_connected: boolean
+  device_id: string | null
+  device_simulated: boolean
   readings_live: boolean
   sensor_error: string | null
   panel_rated_watts: number

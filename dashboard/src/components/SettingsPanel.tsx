@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { Settings } from '../api'
+import { SectionHead } from './ui'
 
 function Field({
   label, hint, value, onChange, min, max, suffix,
@@ -57,9 +58,9 @@ export function SettingsPanel({ onError }: { onError: (message: string) => void 
 
   if (!settings) {
     return (
-      <div className="card">
-        <div className="label">Advanced settings</div>
-      </div>
+      <section className="glass">
+        <div className="eyebrow">Settings · loading</div>
+      </section>
     )
   }
 
@@ -82,13 +83,16 @@ export function SettingsPanel({ onError }: { onError: (message: string) => void 
   }
 
   return (
-    <div className="card">
-      <div className="between" style={{ marginBottom: 16 }}>
-        <div className="label">Advanced settings</div>
-        <button className="primary" onClick={save} disabled={!dirty || saving}>
-          {saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
-        </button>
-      </div>
+    <section className="glass rise">
+      <SectionHead
+        eyebrow="Settings"
+        title={<>Tune the <span className="accent-serif">behaviour</span></>}
+        right={
+          <button className="primary" onClick={save} disabled={!dirty || saving}>
+            {saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
+          </button>
+        }
+      />
 
       <div className="stack" style={{ gap: 16 }}>
         <div
@@ -161,6 +165,6 @@ export function SettingsPanel({ onError }: { onError: (message: string) => void 
           min={1} suffix="sec"
         />
       </div>
-    </div>
+    </section>
   )
 }

@@ -1,58 +1,65 @@
 /*
- * Design system for the lighting console.
+ * Design system — "liquid glass over live light".
  *
- * Direction: a dark instrument panel. The subject is light and energy, so the palette
- * is built around a warm amber for illumination and a cool teal for energy saved —
- * the two quantities the whole dashboard exists to contrast. Everything else is
- * near-neutral so those two colours always read as data, never decoration.
+ * Panels are frosted glass floating over a slow aurora. The aurora is not decoration:
+ * its amber bloom is driven by the panel's real output (`--light`, set from state in
+ * App.tsx), so the page itself glows as bright as the room is lit, and goes dark when
+ * no device is reporting. Amber means light, teal means energy saved, violet means
+ * daylight — those three always read as data.
  *
- * Numbers are the content here, so the type scale is built around tabular figures at
- * large sizes with tight tracking, and labels are small, uppercase and widely tracked
- * to stay clearly subordinate.
+ * Type: Bricolage Grotesque for display and big numbers, Inter Tight for UI, JetBrains
+ * Mono for tabular data, and Instrument Serif italic as a rare editorial accent.
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@1&display=swap');
 
 :root {
-  /* Surfaces — a short ramp from the page ground up to raised cards. */
-  --bg: #0a0b0f;
-  --bg-elevated: #101219;
-  --surface: #14171f;
-  --surface-hi: #1b1f2a;
-  --border: #232834;
-  --border-hi: #2f3644;
+  /* Ground and glass. */
+  --bg: #05060a;
+  --bg-elevated: rgba(255, 255, 255, 0.045);
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface-hi: rgba(22, 24, 34, 0.92);   /* opaque enough for sticky headers, tooltips */
+  --glass: rgba(255, 255, 255, 0.055);
+  --glass-hi: rgba(255, 255, 255, 0.10);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-hi: rgba(255, 255, 255, 0.16);
 
-  /* Text — three steps is enough; more just muddies the hierarchy. */
-  --text: #eef1f6;
-  --text-dim: #9aa3b4;
-  --text-faint: #626b7d;
+  --text: #f4f5f8;
+  --text-dim: rgba(236, 239, 247, 0.66);
+  --text-faint: rgba(236, 239, 247, 0.38);
 
-  /* The two data colours. */
-  --amber: #ffb020;
-  --amber-soft: #ffc95c;
-  --amber-glow: rgba(255, 176, 32, 0.16);
-  --teal: #2dd4bf;
-  --teal-soft: #5eead4;
-  --teal-glow: rgba(45, 212, 191, 0.14);
+  /* The data colours. */
+  --amber: #ffb84d;
+  --amber-soft: #ffd08a;
+  --amber-glow: rgba(255, 184, 77, 0.22);
+  --teal: #3fe0c5;
+  --teal-soft: #8af0de;
+  --teal-glow: rgba(63, 224, 197, 0.18);
+  --violet: #a996ff;
+  --rose: #ff7a90;
+  --green: #5cf29a;
 
-  /* State accents. */
-  --violet: #a78bfa;
-  --rose: #fb7185;
-  --green: #4ade80;
+  --radius: 28px;
+  --radius-md: 18px;
+  --radius-sm: 12px;
+  --gap: 18px;
 
-  --radius: 14px;
-  --radius-sm: 9px;
-  --gap: 20px;
-
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --display: 'Bricolage Grotesque', 'Inter Tight', system-ui, sans-serif;
+  --font: 'Inter Tight', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --serif: 'Instrument Serif', Georgia, serif;
 
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.28);
+  --shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.75), 0 8px 20px -12px rgba(0, 0, 0, 0.5);
+
+  /* 0..1, the live panel output. Updated from App. */
+  --light: 0;
+
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 
-html, body, #root { height: 100%; }
+html, body, #root { min-height: 100%; }
 
 body {
   margin: 0;
@@ -62,156 +69,343 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  /* Two very low-opacity radial washes keep the large dark field from reading as
-     flat black without introducing a colour the data has to compete with. */
-  background-image:
-    radial-gradient(900px 500px at 15% -8%, rgba(255, 176, 32, 0.05), transparent 60%),
-    radial-gradient(800px 500px at 90% 0%, rgba(45, 212, 191, 0.045), transparent 60%);
-  background-attachment: fixed;
+  overflow-x: hidden;
 }
 
-/* --- primitives ---------------------------------------------------------- */
+::selection { background: var(--amber); color: #1a1204; }
 
-.card {
-  background: linear-gradient(180deg, var(--surface-hi), var(--surface));
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  box-shadow: var(--shadow);
-  position: relative;
+/* --- the aurora ---------------------------------------------------------- */
+
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
   overflow: hidden;
 }
-
-/* A one-pixel highlight along the top edge — reads as light falling on the card,
-   which is thematically right and stops the panels looking like flat rectangles. */
-.card::before {
+.aurora span {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  will-change: transform;
+}
+.aurora .bloom-light {
+  width: 62vmax; height: 62vmax;
+  left: -12vmax; top: -26vmax;
+  background: radial-gradient(circle, #ffb84d 0%, #ff8a3d 40%, transparent 70%);
+  opacity: calc(0.08 + var(--light) * 0.5);
+  transition: opacity 1.2s ease;
+  animation: drift-a 28s ease-in-out infinite alternate;
+}
+.aurora .bloom-teal {
+  width: 48vmax; height: 48vmax;
+  right: -16vmax; top: 8vmax;
+  background: radial-gradient(circle, #1fbfa8 0%, transparent 68%);
+  opacity: 0.22;
+  animation: drift-b 34s ease-in-out infinite alternate;
+}
+.aurora .bloom-violet {
+  width: 54vmax; height: 54vmax;
+  left: 22vmax; bottom: -34vmax;
+  background: radial-gradient(circle, #6b52ff 0%, transparent 66%);
+  opacity: 0.2;
+  animation: drift-c 40s ease-in-out infinite alternate;
+}
+/* Film grain keeps the large blurred fields from banding. */
+.aurora::after {
   content: '';
   position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+  inset: 0;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-.label {
+@keyframes drift-a { to { transform: translate(8vmax, 6vmax) scale(1.08); } }
+@keyframes drift-b { to { transform: translate(-6vmax, 10vmax) scale(0.94); } }
+@keyframes drift-c { to { transform: translate(-10vmax, -4vmax) scale(1.1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora span { animation: none; }
+}
+
+/* --- glass --------------------------------------------------------------- */
+
+.card, .glass {
+  position: relative;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.025) 38%, rgba(255, 255, 255, 0.045));
+  backdrop-filter: blur(30px) saturate(165%);
+  -webkit-backdrop-filter: blur(30px) saturate(165%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.015),
+    var(--shadow);
+  isolation: isolate;
+}
+/* Specular sheen: a soft highlight in the top-left, as if lit from above. */
+.card::before, .glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  background: radial-gradient(120% 70% at 0% 0%, rgba(255, 255, 255, 0.07), transparent 55%);
+}
+
+.inset {
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+/* --- type ---------------------------------------------------------------- */
+
+.label, .eyebrow {
+  font-family: var(--font);
   font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.11em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-faint);
 }
 
-.metric {
-  font-family: var(--mono);
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  line-height: 1;
+.title {
+  margin: 4px 0 0;
+  font-family: var(--display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  color: var(--text);
 }
 
-.unit {
-  font-size: 0.5em;
-  color: var(--text-faint);
+.accent-serif {
+  font-family: var(--serif);
+  font-style: italic;
   font-weight: 400;
-  margin-left: 3px;
+  letter-spacing: -0.01em;
+}
+
+.metric {
+  font-family: var(--display);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.unit {
+  font-family: var(--font);
+  font-size: 0.42em;
+  color: var(--text-faint);
+  font-weight: 500;
+  letter-spacing: 0;
+  margin-left: 4px;
 }
 
 /* --- controls ------------------------------------------------------------ */
 
 button {
-  font-family: inherit;
+  font-family: var(--font);
   font-size: 13px;
-  font-weight: 500;
-  color: var(--text-dim);
-  background: var(--surface-hi);
+  font-weight: 600;
+  color: var(--text);
+  background: var(--glass);
   border: 1px solid var(--border-hi);
-  border-radius: var(--radius-sm);
-  padding: 8px 14px;
+  border-radius: 999px;
+  padding: 9px 16px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: background 0.18s, color 0.18s, border-color 0.18s, transform 0.12s, box-shadow 0.18s;
 }
-button:hover:not(:disabled) { background: #232838; color: var(--text); }
-button:disabled { opacity: 0.4; cursor: not-allowed; }
+button:hover:not(:disabled) { background: var(--glass-hi); }
+button:active:not(:disabled) { transform: scale(0.97); }
+button:disabled { opacity: 0.38; cursor: not-allowed; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 
 button.primary {
-  background: var(--amber);
-  border-color: var(--amber);
-  color: #1a1204;
-  font-weight: 600;
+  background: linear-gradient(180deg, #ffd08a, #ffad3a);
+  border-color: transparent;
+  color: #1d1205;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 8px 24px -8px rgba(255, 170, 60, 0.7);
 }
-button.primary:hover:not(:disabled) { background: var(--amber-soft); }
+button.primary:hover:not(:disabled) { background: linear-gradient(180deg, #ffdca6, #ffb84d); }
 
-button.ghost { background: transparent; border-color: var(--border); }
+button.ghost { background: transparent; border-color: var(--border); box-shadow: none; color: var(--text-dim); }
+button.ghost:hover:not(:disabled) { color: var(--text); border-color: var(--border-hi); }
+button.danger:hover:not(:disabled) { color: var(--rose); border-color: var(--rose); }
 
-/* Download links (CSV exports) dressed as ghost buttons. */
 a.button-link {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 12.5px;
+  font-weight: 600;
   color: var(--text-dim);
   text-decoration: none;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 6px 11px;
-  transition: color 0.15s, border-color 0.15s;
+  border-radius: 999px;
+  padding: 7px 14px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
-a.button-link:hover { color: var(--text); border-color: var(--border-hi); }
-button.danger:hover:not(:disabled) { color: var(--rose); border-color: var(--rose); }
+a.button-link:hover { color: var(--text); border-color: var(--border-hi); background: var(--glass); }
 
 input[type='text'], input[type='number'], input[type='date'] {
   font-family: var(--mono);
   font-size: 13px;
   color: var(--text);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-hi);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 8px 11px;
+  padding: 10px 13px;
   width: 100%;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-input[type='date'] { color-scheme: dark; padding: 6px 10px; }
+input[type='date'] { padding: 8px 12px; border-radius: 999px; }
+input::placeholder { color: var(--text-faint); }
 input:focus {
   outline: none;
-  border-color: var(--amber);
-  box-shadow: 0 0 0 3px var(--amber-glow);
+  border-color: rgba(255, 184, 77, 0.6);
+  box-shadow: 0 0 0 4px var(--amber-glow);
 }
 
-/* Range inputs are styled from scratch — the native control is the single most
-   out-of-place element in an otherwise custom UI. */
+/* The slider fills to its value: set --fill (0-100%) inline. */
 input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--border-hi);
+  height: 12px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, #ff9d3a, #ffd08a) 0 / var(--fill, 0%) 100% no-repeat,
+    rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px var(--border);
   outline: none;
+  cursor: pointer;
 }
 input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  background: var(--amber);
-  border: 3px solid var(--bg);
-  box-shadow: 0 0 0 1px var(--amber), 0 0 12px var(--amber-glow);
-  cursor: pointer;
+  background: radial-gradient(circle at 35% 30%, #fff, #ffe2b3 55%, #ffb84d);
+  border: none;
+  box-shadow: 0 0 0 5px rgba(255, 184, 77, 0.18), 0 4px 14px rgba(255, 160, 50, 0.6);
 }
 input[type='range']::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  background: var(--amber);
-  border: 3px solid var(--bg);
-  cursor: pointer;
+  border: none;
+  background: radial-gradient(circle at 35% 30%, #fff, #ffe2b3 55%, #ffb84d);
+  box-shadow: 0 0 0 5px rgba(255, 184, 77, 0.18);
 }
 
-/* --- utilities ----------------------------------------------------------- */
+/* --- chips and pills ------------------------------------------------------ */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex: none;
+}
+.dot.live {
+  background: var(--green);
+  box-shadow: 0 0 10px var(--green);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 4px;
+  gap: 2px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+}
+.segmented button {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-faint);
+  padding: 7px 18px;
+}
+.segmented button.on {
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 4px 14px -6px rgba(0, 0, 0, 0.6);
+}
+
+/* --- layout -------------------------------------------------------------- */
+
+.page {
+  position: relative;
+  z-index: 1;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 22px 28px 70px;
+}
 
 .row { display: flex; align-items: center; gap: 10px; }
 .between { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .grow { flex: 1; }
 
+.grid-hero { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(340px, 1fr); gap: var(--gap); }
+.grid-main { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(340px, 1fr); gap: var(--gap); align-items: start; }
+.grid-half { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); align-items: start; }
+.grid-history { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: var(--gap); align-items: start; }
+
+.readouts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.readouts > * + * { border-left: 1px solid var(--border); }
+
+@media (max-width: 1040px) {
+  .grid-hero, .grid-main, .grid-half, .grid-history { grid-template-columns: minmax(0, 1fr); }
+  .readouts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .readouts > :nth-child(3) { border-left: none; }
+  .readouts > :nth-child(n + 3) { border-top: 1px solid var(--border); }
+}
+@media (max-width: 640px) {
+  .page { padding: 14px 16px 50px; }
+  .card, .glass { padding: 18px; border-radius: 22px; }
+  .hide-sm { display: none !important; }
+}
+
+/* --- motion -------------------------------------------------------------- */
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.rise { animation: rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.rise:nth-child(2) { animation-delay: 0.05s; }
+.rise:nth-child(3) { animation-delay: 0.1s; }
+.rise:nth-child(4) { animation-delay: 0.15s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rise { animation: none; }
 }

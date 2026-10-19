@@ -130,9 +130,9 @@ function Stat({
   sub?: string
 }) {
   return (
-    <div className="card" style={{ padding: '15px 17px' }}>
+    <div className="card" style={{ padding: '20px 22px' }}>
       <div className="label">{label}</div>
-      <div className="metric" style={{ fontSize: 28, marginTop: 9, color: accent ?? 'var(--text)' }}>
+      <div className="metric" style={{ fontSize: 36, marginTop: 10, color: accent ?? 'var(--text)' }}>
         {value}
         {unit && <span className="unit">{unit}</span>}
       </div>
@@ -429,7 +429,13 @@ export function HistoryView({ onError }: { onError: (message: string) => void })
 
   return (
     <div className="stack" style={{ gap: 'var(--gap)' }}>
-      <div className="card" style={{ padding: '14px 18px' }}>
+      <div className="rise" style={{ padding: '6px 6px 0' }}>
+        <div className="eyebrow">History · SQLite · real device only</div>
+        <h1 style={{ margin: '6px 0 0', fontFamily: 'var(--display)', fontWeight: 800, fontSize: 'clamp(32px, 4vw, 48px)', letterSpacing: '-0.04em', lineHeight: 1 }}>
+          What the room <span className="accent-serif">remembers</span>.
+        </h1>
+      </div>
+      <div className="card" style={{ padding: '12px 14px', borderRadius: 999 }}>
         <div className="between" style={{ flexWrap: 'wrap', gap: 14 }}>
           <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
             {RANGES.map((range) => (
@@ -526,14 +532,7 @@ export function HistoryView({ onError }: { onError: (message: string) => void })
             <HistoryChart points={points} withDate={withDate} />
           </div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)',
-              gap: 'var(--gap)',
-              alignItems: 'start',
-            }}
-          >
+          <div className="grid-history">
             <div className="card">
               <div className="between" style={{ marginBottom: 10 }}>
                 <div className="label">Light changes</div>

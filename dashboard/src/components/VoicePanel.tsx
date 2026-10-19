@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import type { SystemState, VoiceResult } from '../api'
 import { playPcmBase64, recordWav } from '../recorder'
+import { SectionHead } from './ui'
 
 const RECORD_MS = 5000
 // A short lockout after each capture. Without it a double-click fires a second
@@ -136,81 +137,83 @@ export function VoicePanel({
   }
 
   const buttonLabel = {
-    idle: deviceAttached ? 'Record 5s on device' : 'ESP32 not connected',
+    idle: deviceAttached ? 'Tap to speak · 5 s' : 'ESP32 not connected',
     recording: `Listening… ${remaining}s`,
     thinking: 'Transcribing…',
     cooldown: 'Ready shortly',
   }[phase]
 
+  const recording = phase === 'recording'
+  const ring = recording ? Math.max(0.15, level) : 0
+
   return (
-    <div className="card">
-      <div className="between" style={{ marginBottom: 14 }}>
-        <div className="label">Voice</div>
-        <div className="label" style={{
-          color: deviceAttached ? 'var(--teal)' : 'var(--text-faint)',
-        }}>
-          {deviceAttached ? 'INMP441 on device' : 'device offline'}
-        </div>
-      </div>
+    <section className="glass rise">
+      <SectionHead
+        eyebrow="Voice"
+        title={<>Just <span className="accent-serif">say it</span></>}
+        right={
+          <span className="chip" style={{ color: deviceAttached ? 'var(--teal)' : 'var(--text-faint)' }}>
+            {deviceAttached ? 'INMP441 on device' : 'device offline'}
+          </span>
+        }
+      />
 
       {/* --- push to talk --- */}
-      <div className="row" style={{ gap: 14, marginBottom: 16 }}>
+      <div className="row" style={{ gap: 18, marginBottom: 18 }}>
         <button
-          className={phase === 'recording' ? '' : 'primary'}
           onClick={pushToTalk}
           disabled={busy || !deviceAttached}
+          aria-label={buttonLabel}
           title={deviceAttached
-            ? 'Records on the ESP32 microphone'
+            ? 'Records 5 s on the ESP32 microphone'
             : 'Connect the ESP32 to record on its microphone'}
           style={{
-            minWidth: 168, padding: '12px 18px', fontSize: 14, fontWeight: 600,
-            borderColor: phase === 'recording' ? 'var(--rose)' : undefined,
-            color: phase === 'recording' ? 'var(--rose)' : undefined,
+            width: 84, height: 84, borderRadius: '50%', padding: 0, flex: 'none',
+            display: 'grid', placeItems: 'center',
+            border: 'none',
+            background: recording
+              ? 'radial-gradient(circle at 35% 30%, #ffc2cc, #ff5f7c 60%, #c9304f)'
+              : 'radial-gradient(circle at 35% 30%, #fff1d6, #ffb84d 58%, #e8871c)',
+            boxShadow: recording
+              ? `0 0 0 ${6 + ring * 18}px rgba(255,122,144,0.18), 0 10px 30px -8px rgba(255,95,124,0.8)`
+              : 'inset 0 2px 0 rgba(255,255,255,0.6), 0 12px 30px -10px rgba(255,170,60,0.85)',
+            transition: 'box-shadow 90ms linear, background 0.2s',
           }}
         >
-          <span className="row" style={{ gap: 9, justifyContent: 'center' }}>
-            <span
-              style={{
-                width: 10, height: 10, borderRadius: '50%',
-                background: phase === 'recording' ? 'var(--rose)' : 'currentColor',
-                animation: phase === 'recording'
-                  ? 'pulse 1s ease-in-out infinite' : 'none',
-              }}
-            />
-            {buttonLabel}
-          </span>
+          {recording ? (
+            <span className="metric" style={{ fontSize: 30, color: '#2a0710' }}>{remaining}</span>
+          ) : (
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#2a1806" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+              <rect x="9" y="3" width="6" height="11" rx="3" />
+              <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+            </svg>
+          )}
         </button>
 
-        {/* Live input level, so a muted or wrong mic is obvious immediately. */}
-        <div className="grow">
-          <div style={{
-            height: 8, borderRadius: 4, background: 'var(--bg-elevated)',
-            border: '1px solid var(--border)', overflow: 'hidden',
-          }}>
+        <div className="grow" style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{buttonLabel}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 3 }}>
+            {recording && micSource === 'browser'
+              ? 'speak now — laptop microphone'
+              : recording
+                ? 'recording on the ESP32'
+                : 'English · हिंदी · मराठी · Hinglish'}
+          </div>
+          {/* Live input level, so a muted or wrong mic is obvious immediately. */}
+          <div style={{ height: 6, borderRadius: 999, background: 'rgba(0,0,0,0.35)', overflow: 'hidden', marginTop: 10 }}>
             <div style={{
-              height: '100%', width: `${level * 100}%`,
+              height: '100%', width: `${level * 100}%`, borderRadius: 999,
               background: 'linear-gradient(90deg, var(--teal), var(--amber))',
               transition: 'width 90ms linear',
             }} />
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 5 }}>
-            {phase === 'recording' && micSource === 'browser'
-              ? 'speak now — laptop microphone'
-              : phase === 'recording'
-                ? 'recording on the ESP32'
-                : `${RECORD_MS / 1000}s capture · ${COOLDOWN_MS / 1000}s between takes`}
           </div>
         </div>
       </div>
 
       {!deviceAttached && (
-        <div className="between" style={{
-          marginBottom: 14, padding: '9px 12px',
-          border: '1px dashed var(--border-hi)', borderRadius: 'var(--radius-sm)',
-        }}>
-          <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>
-            No device. You can test the pipeline on this laptop's microphone instead —
-            results are marked as such.
+        <div className="inset between" style={{ marginBottom: 16, padding: '10px 10px 10px 14px', borderStyle: 'dashed' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>
+            No device — test on this laptop's mic. Results are marked as such.
           </span>
           <button className="ghost" onClick={recordOnLaptop} disabled={busy}
                   style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
@@ -221,47 +224,35 @@ export function VoicePanel({
 
       {/* --- last result --- */}
       {result ? (
-        <div style={{
-          background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-sm)', padding: '13px 15px', marginBottom: 14,
-        }}>
-          <div className="row" style={{ gap: 8, marginBottom: 9, flexWrap: 'wrap' }}>
-            <span style={{
-              fontSize: 10, fontWeight: 700, letterSpacing: '0.07em',
-              textTransform: 'uppercase',
+        <div className="inset" style={{ padding: '16px 18px', marginBottom: 16 }}>
+          <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+            <span className="chip" style={{
+              padding: '3px 10px', fontSize: 10.5, letterSpacing: '0.08em', textTransform: 'uppercase',
               color: ACTION_COLOURS[result.action] ?? 'var(--text-dim)',
-              border: `1px solid ${ACTION_COLOURS[result.action] ?? 'var(--border-hi)'}`,
-              borderRadius: 4, padding: '2px 7px',
+              borderColor: ACTION_COLOURS[result.action] ?? 'var(--border-hi)',
             }}>
               {result.action}
             </span>
-            <span className="label" style={{ letterSpacing: '0.06em' }}>
-              {result.intent.language}
-            </span>
+            <span className="eyebrow">{result.intent.language}</span>
             {micSource && (
-              <span className="label" style={{
-                letterSpacing: '0.06em',
-                color: micSource === 'esp32' ? 'var(--teal)' : 'var(--rose)',
-              }}>
+              <span className="eyebrow" style={{ color: micSource === 'esp32' ? 'var(--teal)' : 'var(--rose)' }}>
                 {micSource === 'esp32' ? 'via device mic' : 'via laptop mic'}
               </span>
             )}
             {!result.applied && (
-              <span style={{ fontSize: 11, color: 'var(--rose)' }}>
-                device did not acknowledge
-              </span>
+              <span style={{ fontSize: 11, color: 'var(--rose)' }}>device did not acknowledge</span>
             )}
           </div>
-          <div style={{ fontSize: 14, marginBottom: 8 }}>“{result.transcript}”</div>
-          <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.55 }}>
+          <div style={{ fontFamily: 'var(--display)', fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em', marginBottom: 8 }}>
+            “{result.transcript}”
+          </div>
+          <div style={{ fontSize: 12.5, color: 'var(--text-dim)', lineHeight: 1.55 }}>
             {result.confirmation_text}
           </div>
         </div>
       ) : (
-        <div style={{
-          fontSize: 12.5, color: 'var(--text-faint)', marginBottom: 14, padding: '4px 0',
-        }}>
-          Nothing heard yet. Press record, or type a command below.
+        <div style={{ fontSize: 13, color: 'var(--text-faint)', marginBottom: 16 }}>
+          Nothing heard yet. Press the mic, or type a command below.
         </div>
       )}
 
@@ -272,10 +263,10 @@ export function VoicePanel({
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => event.key === 'Enter' && send()}
-          style={{ fontFamily: 'var(--font)' }}
+          style={{ fontFamily: 'var(--font)', borderRadius: 999, paddingLeft: 18 }}
         />
-        <button onClick={send} disabled={busy || !text.trim()}>Send</button>
+        <button className="primary" onClick={send} disabled={busy || !text.trim()}>Send</button>
       </div>
-    </div>
+    </section>
   )
 }

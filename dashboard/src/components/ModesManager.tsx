@@ -9,6 +9,7 @@
 import { useState } from 'react'
 import { api } from '../api'
 import type { Mode } from '../api'
+import { SectionHead } from './ui'
 
 export function ModesManager({
   modes, onChange, onError,
@@ -36,8 +37,12 @@ export function ModesManager({
   }
 
   return (
-    <div className="card">
-      <div className="label" style={{ marginBottom: 14 }}>Lighting modes</div>
+    <section className="glass rise">
+      <SectionHead
+        eyebrow="Modes"
+        title={<>Named <span className="accent-serif">scenes</span></>}
+        right={<span style={{ fontSize: 12, color: 'var(--text-faint)' }}>speakable the moment they're saved</span>}
+      />
 
       <div className="stack" style={{ gap: 8, marginBottom: 18 }}>
         {modes.map((mode) =>
@@ -68,13 +73,8 @@ export function ModesManager({
           ) : (
             <div
               key={mode.id}
-              className="between"
-              style={{
-                background: 'var(--bg-elevated)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '10px 13px',
-              }}
+              className="inset between"
+              style={{ padding: '10px 10px 10px 16px', borderRadius: 16 }}
             >
               <div className="row" style={{ gap: 11 }}>
                 {/* A swatch whose opacity tracks the target, so the list reads as a
@@ -131,6 +131,6 @@ export function ModesManager({
         />
         <button className="primary" onClick={add} disabled={!name.trim()}>Add</button>
       </div>
-    </div>
+    </section>
   )
 }
