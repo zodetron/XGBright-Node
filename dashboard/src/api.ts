@@ -8,7 +8,7 @@
  * for no benefit.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export type Mode = { id: string; name: string; target_lux: number }
 
@@ -192,11 +192,6 @@ export const api = {
   override: (payload: { auto?: boolean; mode_id?: string; brightness?: number }) =>
     request<unknown>('/api/override', { method: 'POST', body: JSON.stringify(payload) }),
 
-  simulateSensor: (indoor_lux: number, outdoor_lux: number) =>
-    request<unknown>('/api/simulate/sensor', {
-      method: 'POST',
-      body: JSON.stringify({ indoor_lux, outdoor_lux }),
-    }),
   simulateVoice: (transcript: string) =>
     request<VoiceResult>('/api/simulate/voice', {
       method: 'POST',
@@ -306,10 +301,5 @@ export function useLiveData() {
     }
   }, [])
 
-  const refetchSeries = useCallback(async () => {
-    const data = await request<{ points: Point[] }>('/api/series')
-    setPoints(data.points.slice(-MAX_POINTS))
-  }, [])
-
-  return { state, points, connected, lastVoice, refetchSeries }
+  return { state, points, connected, lastVoice }
 }

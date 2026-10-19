@@ -96,7 +96,7 @@ export function SettingsPanel({ onError }: { onError: (message: string) => void 
 
       <div className="stack" style={{ gap: 16 }}>
         <div
-          className="label"
+          className="eyebrow"
           style={{ color: 'var(--text-dim)', borderBottom: '1px solid var(--border)', paddingBottom: 7 }}
         >
           Voice step sizes
@@ -124,7 +124,7 @@ export function SettingsPanel({ onError }: { onError: (message: string) => void 
         />
 
         <div
-          className="label"
+          className="eyebrow"
           style={{ color: 'var(--text-dim)', borderBottom: '1px solid var(--border)', paddingBottom: 7, marginTop: 6 }}
         >
           System

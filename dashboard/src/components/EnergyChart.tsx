@@ -32,7 +32,7 @@ function ChartTooltip({ active, payload }: any) {
       className="card"
       style={{ padding: '11px 13px', minWidth: 168, boxShadow: 'var(--shadow)' }}
     >
-      <div className="label" style={{ marginBottom: 8 }}>{clockLabel(point.t)}</div>
+      <div className="eyebrow" style={{ marginBottom: 8 }}>{clockLabel(point.t)}</div>
       <div className="stack" style={{ gap: 5, fontSize: 12 }}>
         <div className="between">
           <span style={{ color: 'var(--text-dim)' }}>Actual</span>

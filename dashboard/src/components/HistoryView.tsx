@@ -131,7 +131,7 @@ function Stat({
 }) {
   return (
     <div className="card" style={{ padding: '20px 22px' }}>
-      <div className="label">{label}</div>
+      <div className="eyebrow">{label}</div>
       <div className="metric" style={{ fontSize: 36, marginTop: 10, color: accent ?? 'var(--text)' }}>
         {value}
         {unit && <span className="unit">{unit}</span>}
@@ -149,7 +149,7 @@ function HistoryTooltip({ active, payload, withDate }: any) {
   if (point.readings === 0 && point.unavailable === 0) return null
   return (
     <div className="card" style={{ padding: '11px 13px', minWidth: 180, boxShadow: 'var(--shadow)' }}>
-      <div className="label" style={{ marginBottom: 8 }}>{timeLabel(point.t, withDate)}</div>
+      <div className="eyebrow" style={{ marginBottom: 8 }}>{timeLabel(point.t, withDate)}</div>
       {point.readings === 0 ? (
         <div style={{ fontSize: 12, color: 'var(--rose)' }}>
           sensor unavailable{point.sensor_error ? `: ${point.sensor_error}` : ''}
@@ -191,7 +191,7 @@ function HistoryChart({
 }) {
   return (
     <div className="stack" style={{ gap: 4 }}>
-      <div className="label" style={{ paddingLeft: 4 }}>Panel output</div>
+      <div className="eyebrow" style={{ paddingLeft: 4 }}>Panel output</div>
       <ResponsiveContainer width="100%" height={170}>
         <ComposedChart data={points} syncId="history" margin={{ top: 6, right: 54, bottom: 0, left: -6 }}>
           <defs>
@@ -214,7 +214,7 @@ function HistoryChart({
         </ComposedChart>
       </ResponsiveContainer>
 
-      <div className="label" style={{ paddingLeft: 4, marginTop: 10 }}>Light levels</div>
+      <div className="eyebrow" style={{ paddingLeft: 4, marginTop: 10 }}>Light levels</div>
       <ResponsiveContainer width="100%" height={210}>
         <ComposedChart data={points} syncId="history" margin={{ top: 6, right: 0, bottom: 0, left: -6 }}>
           <CartesianGrid stroke="var(--border)" strokeDasharray="2 5" vertical={false} />
@@ -279,7 +279,7 @@ function ChangesTable({ changes }: { changes: LightChange[] }) {
             {['When', 'Change', 'Source', 'Detail'].map((heading) => (
               <th
                 key={heading}
-                className="label"
+                className="eyebrow"
                 style={{
                   padding: '6px 4px', position: 'sticky', top: 0,
                   background: 'var(--surface-hi)', borderBottom: '1px solid var(--border)',
@@ -523,7 +523,7 @@ export function HistoryView({ onError }: { onError: (message: string) => void })
 
           <div className="card" style={{ padding: '18px 18px 12px' }}>
             <div className="between" style={{ marginBottom: 12 }}>
-              <div className="label">Recorded history</div>
+              <div className="eyebrow">Recorded history</div>
               <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>
                 {points.length.toLocaleString()} points · {step}s each
                 {summary?.unavailable ? ` · ${summary.unavailable} sensor-unavailable readings` : ''}
@@ -535,7 +535,7 @@ export function HistoryView({ onError }: { onError: (message: string) => void })
           <div className="grid-history">
             <div className="card">
               <div className="between" style={{ marginBottom: 10 }}>
-                <div className="label">Light changes</div>
+                <div className="eyebrow">Light changes</div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>
                   newest first · AUTO moves under 2% not logged
                 </div>
@@ -543,7 +543,7 @@ export function HistoryView({ onError }: { onError: (message: string) => void })
               <ChangesTable changes={changes} />
             </div>
             <div className="card">
-              <div className="label" style={{ marginBottom: 6 }}>Device sessions</div>
+              <div className="eyebrow" style={{ marginBottom: 6 }}>Device sessions</div>
               <SessionsList sessions={sessions} />
             </div>
           </div>

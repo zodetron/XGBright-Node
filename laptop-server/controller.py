@@ -11,7 +11,7 @@ import time
 import uuid
 
 import protocol
-from state import AUTO, MANUAL
+from state import AUTO
 from voice import nlu, tts
 
 

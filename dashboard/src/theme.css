@@ -16,8 +16,6 @@
 :root {
   /* Ground and glass. */
   --bg: #05060a;
-  --bg-elevated: rgba(255, 255, 255, 0.045);
-  --surface: rgba(255, 255, 255, 0.04);
   --surface-hi: rgba(22, 24, 34, 0.92);   /* opaque enough for sticky headers, tooltips */
   --glass: rgba(255, 255, 255, 0.055);
   --glass-hi: rgba(255, 255, 255, 0.10);
@@ -30,11 +28,8 @@
 
   /* The data colours. */
   --amber: #ffb84d;
-  --amber-soft: #ffd08a;
   --amber-glow: rgba(255, 184, 77, 0.22);
   --teal: #3fe0c5;
-  --teal-soft: #8af0de;
-  --teal-glow: rgba(63, 224, 197, 0.18);
   --violet: #a996ff;
   --rose: #ff7a90;
   --green: #5cf29a;
@@ -164,7 +159,7 @@ body {
 
 /* --- type ---------------------------------------------------------------- */
 
-.label, .eyebrow {
+.eyebrow {
   font-family: var(--font);
   font-size: 10.5px;
   font-weight: 600;
