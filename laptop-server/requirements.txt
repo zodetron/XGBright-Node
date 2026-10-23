@@ -15,5 +15,5 @@ xgboost
 
 # --- voice ---
 mlx-whisper          # STT, Apple Silicon only
-edge-tts             # TTS (needs internet at request time)
+edge-tts>=7.3.1      # TTS (needs internet); older clients get a 403 from Microsoft
 soundfile            # decodes edge-tts MP3 to PCM — replaces an ffmpeg dependency

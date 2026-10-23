@@ -43,6 +43,7 @@ DEFAULT_SETTINGS = {
     "sensor_target_lux_default": 500,
     "panel_full_output_lux": 500,
     "history_interval_seconds": 5,
+    "laptop_voice": True,          # also speak voice confirmations on the laptop
 }
 
 _SLUG = re.compile(r"[^a-z0-9]+")

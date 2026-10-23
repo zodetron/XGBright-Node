@@ -206,6 +206,13 @@ class Controller:
 
         await self.broadcast({"type": "voice_result", **result})
 
+        # The laptop speaks too, in its fuller-quality voice, independently of the
+        # ESP32 path so neither waits on the other.
+        result["spoken_on_laptop"] = bool(settings.get("laptop_voice", True)
+                                          and tts.laptop_speaker_available())
+        if result["spoken_on_laptop"]:
+            asyncio.create_task(tts.speak_on_laptop(text, intent.language))
+
         if return_audio:
             # The caller wants the audio itself, so synthesise inline rather than in
             # a background task and hand back the PCM.

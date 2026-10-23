@@ -164,6 +164,21 @@ export function SettingsPanel({ onError }: { onError: (message: string) => void 
           onChange={(value) => patch({ history_interval_seconds: value })}
           min={1} suffix="sec"
         />
+        <div className="between" style={{ alignItems: 'flex-start', gap: 16 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Laptop voice</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 2 }}>
+              also speak voice confirmations through this laptop's speakers
+            </div>
+          </div>
+          <button
+            className={settings.laptop_voice ? 'primary' : ''}
+            onClick={() => patch({ laptop_voice: !settings.laptop_voice })}
+            style={{ minWidth: 128 }}
+          >
+            {settings.laptop_voice ? 'On' : 'Off'}
+          </button>
+        </div>
       </div>
     </section>
   )

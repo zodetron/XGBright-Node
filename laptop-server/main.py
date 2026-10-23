@@ -402,6 +402,10 @@ async def upload_audio(request: Request):
     pcm = result.pop("audio_pcm", b"")
     result["audio_b64"] = base64.b64encode(pcm).decode() if pcm else None
     result["source"] = "browser"
+    if result.get("spoken_on_laptop"):
+        # The laptop already speaks it; sending audio too would make the browser
+        # play it a second time over the top.
+        result["audio_b64"] = None
     return result
 
 

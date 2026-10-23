@@ -20,6 +20,7 @@ export type Settings = {
   sensor_target_lux_default: number
   panel_full_output_lux: number
   history_interval_seconds: number
+  laptop_voice: boolean
 }
 
 export type Energy = {
@@ -70,6 +71,7 @@ export type VoiceResult = {
   savings_percent: number
   confirmation_text: string
   intent: { kind: string; language: string }
+  spoken_on_laptop?: boolean
 }
 
 /* --- HISTORY (SQLite, real-device sessions only) -------------------------- */

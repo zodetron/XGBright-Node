@@ -1420,6 +1420,19 @@ edge-tts (3.0 s timeout)  →  assets/done.wav ("Done.")  →  a synthesised chi
 if that fails it writes a generated chime. The result tags `source` as `"edge-tts"` or
 `"fallback"` so the dashboard can show which was used.
 
+**The laptop speaks too** (setting `laptop_voice`, on by default, toggled in Setup →
+Settings). Every confirmation now opens with a short acknowledgement ("Done!" /
+"हो गया!" / "झालं!") and is also played through the laptop's speakers with macOS
+`afplay`, using the edge-tts MP3 at its native 24 kHz rather than the 16 kHz PCM sent
+to the ESP32. English uses `en-IN-NeerjaExpressiveNeural` there; other languages keep
+their spec voice. Replies are serialised so two commands never talk over each other,
+generation waits up to 8 s before falling back to `done.wav`, and when the laptop speaks,
+the browser-mic endpoint omits `audio_b64` so the reply is not played twice.
+
+**edge-tts must stay current.** Microsoft rejects outdated clients with
+`WSServerHandshakeError: 403`, which silently drops every reply to the fallback clip.
+Fix: `./.venv/bin/pip install -U edge-tts` (7.2.8 → 7.3.1 fixed it on 2026-10-23).
+
 **Speaking is fire-and-forget by default** (`asyncio.create_task`) — the network round trip
 to Microsoft must not delay the dashboard learning what happened.
 

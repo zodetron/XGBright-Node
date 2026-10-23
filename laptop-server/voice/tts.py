@@ -14,7 +14,10 @@ savings figure from the rolling window — never a canned phrase.
 
 import asyncio
 import io
+import shutil
 import struct
+import sys
+import tempfile
 import wave
 from pathlib import Path
 
@@ -33,14 +36,26 @@ VOICES = {
 }
 DEFAULT_VOICE = VOICES["en"]
 
+# The laptop speaker has the bandwidth the ESP32 amp lacks, so it gets the expressive
+# English voice. Other languages have no expressive variant and keep their spec voice.
+LAPTOP_VOICES = {**VOICES, "en": "en-IN-NeerjaExpressiveNeural"}
+
 # Generation must not hold up the confirmation. If Microsoft is slow, fall back.
 GENERATION_TIMEOUT_SECONDS = 3.0
+# The laptop plays in the background and holds up nothing, and the expressive voice is
+# slower to generate, so it can afford to wait longer before settling for the fallback.
+LAPTOP_GENERATION_TIMEOUT_SECONDS = 8.0
 
 # The ESP32 plays back raw PCM, so everything is delivered in this format.
 PLAYBACK_SAMPLE_RATE = 16_000
 
 
 # --- CONFIRMATION TEXT --------------------------------------------------------
+
+# A short spoken acknowledgement before the details, so the reply opens the way a person
+# would answer. Not used for "unknown": nothing was done.
+_OPENERS = {"en": "Done! ", "hi": "हो गया! ", "mr": "झालं! "}
+_OPENERS["hinglish"] = _OPENERS["hi"]
 
 # Templates are per-language so the confirmation is spoken in the language the command
 # was given in. Each takes `value` (percent) and `savings` (percent).
@@ -97,9 +112,12 @@ def confirmation_text(action, brightness_percent, savings_percent,
     """
     templates = _TEMPLATES.get(language, _TEMPLATES["en"])
     template = templates.get(action, templates["unknown"])
-    return template.format(value=brightness_percent or 0.0,
+    text = template.format(value=brightness_percent or 0.0,
                            savings=savings_percent or 0.0,
                            mode=mode_name or "")
+    if action in templates and action != "unknown":
+        text = _OPENERS.get(language, _OPENERS["en"]) + text
+    return text
 
 
 # --- AUDIO GENERATION ---------------------------------------------------------
@@ -184,6 +202,55 @@ async def synthesise(text, language="en"):
         print(f"[tts] edge-tts unavailable ({type(exc).__name__}: {exc}); "
               f"using fallback clip")
         return _load_fallback_pcm(), "fallback"
+
+
+# --- LAPTOP SPEAKER -----------------------------------------------------------
+
+# One reply at a time: two quick commands queue their confirmations instead of
+# talking over each other.
+_laptop_lock = asyncio.Lock()
+
+
+def laptop_speaker_available():
+    """macOS ships `afplay`; elsewhere there is no dependency-free player, so skip."""
+    return sys.platform == "darwin" and shutil.which("afplay") is not None
+
+
+async def speak_on_laptop(text, language="en"):
+    """Play the confirmation through the laptop's own speakers.
+
+    Uses the edge-tts MP3 as-is (24 kHz) rather than the 16 kHz PCM made for the
+    ESP32, so it sounds as good as the voice allows. Falls back to the static clip
+    when edge-tts is unreachable. Returns the source used, or None if nothing played.
+    """
+    if not laptop_speaker_available():
+        return None
+
+    voice = LAPTOP_VOICES.get(language, DEFAULT_VOICE)
+    async with _laptop_lock:
+        try:
+            mp3 = await asyncio.wait_for(_generate_mp3(text, voice),
+                                         timeout=LAPTOP_GENERATION_TIMEOUT_SECONDS)
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as handle:
+                handle.write(mp3)
+                path, source = Path(handle.name), "edge-tts"
+        except Exception as exc:
+            print(f"[tts] laptop voice: edge-tts unavailable "
+                  f"({type(exc).__name__}: {exc}); using fallback clip")
+            if not FALLBACK_CLIP.exists():
+                return None
+            path, source = FALLBACK_CLIP, "fallback"
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "afplay", str(path),
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+            await process.wait()
+        finally:
+            if path != FALLBACK_CLIP:
+                path.unlink(missing_ok=True)
+    print(f"[tts] spoke on laptop via {source} ({voice})")
+    return source
 
 
 # --- FALLBACK CLIP GENERATION -------------------------------------------------
